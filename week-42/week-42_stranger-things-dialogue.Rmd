@@ -6,10 +6,134 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE)
 suppressPackageStartupMessages(library(tidyverse))
 options(dplyr.summarise.inform = FALSE)
 ```
 
+# Aim
+
+Text mining and sentiment analysis on the tidytuesday datasets from **week 42: Stranger Things Dialogue**.
+
+I would have **loved** to focus the analysis on individual character. However, the way the data-set is organized doesn't seem to allow to do that easily (or at least I couldn't figure out a way).  
+So, for the moment, this is the plan (might grow while exploring the data)
+
+- Prepare the data
+- Some text mining:
+  - How many words are spoken in every episode?
+  - How many lines of dialogue are there on average in each season?
+  - How much of each episode consists of dialogue?
+  - Plot distribution of dialogue moments in each episode
+- Sentiment analysis:
+  - Visualize the lexicon categories of each season
+  - Which are the most common positive and negative words in the series?
+  - What's the sentiment of the episodes across the seasons?
+
+# Libraries
+```{r}
+library(tidytuesdayR)
+library(tidyverse)
+library(tidytext)
+library(stringr)
+library(RColorBrewer)
+```
+
+# Load data
+
+Load data from week 42:
+```{r, message=FALSE}
+
+tuesdata <- tidytuesdayR::tt_load(2022, week = 42)  # Load datasets
+episodes <- tuesdata$episodes
+dialogue <- tuesdata$stranger_things_all_dialogue
+
+```
+
+# Settings
+
+Before we start, let's define some common variables and settings that will recur across the analysis.
+
+```{r}
+
+# Define a color to use for each season:
+col_seasons <- brewer.pal(9, "Reds")[6:9]  # Last 4 colors of RColorBrewer "Reds" palette are nice, in theme, and colorblind friendly
+
+# Define text size to use in all plots:
+title_size <- 35
+axis_title_size <- 15
+axis_label_size <- 10
+legend_title_size <- 15
+legend_text_size <- 10
+strip_size <- 15  # text size for facet labels
+
+```
 
 
+# Part 1: Text mining
+
+Let's start with some text mining.  
+First of all we have to prepare our data. What we want to do is to extract only the dialogue parts, cleaning out all the music, noises, etc. (these are rows that contain a NA in "dialogue").  
+We must be aware that there are some non-dialogue lines that contain a single white space instead of a NA. Therefore we should also filter them out.
+
+```{r}
+dialogue_clean <- dialogue %>% 
+  select(season, episode, line, dialogue, start_time, end_time) %>%  # select variables of interest
+  mutate(dialogue = na_if(dialogue, " ")) %>%  # convert single white spaces in NAs
+  drop_na(dialogue)  # remove non-dialogue lines
+```
+
+Let's also add the episode titles, which are stored in the "episodes" data.frame.  
+NOTE: I'm going to use a left_join to merge the episode title to the new data.frame. This is to keep the approach general, although in this specific case I could also just copy the column from "episodes", since it has the raw order by season and episode.
+```{r}
+dialogue_clean <- dialogue_clean %>% 
+  left_join(y = episodes %>% select(season, episode, title),  # subset "episodes" df since we don't want to join all columns
+            by = c("season", "episode"))
+```
+
+We might also want to rename the season number adding a "Season" in front.  
+Moreover, we can also make the "title" variable prettier, by removing the "Chapter" part of it, and turn it into a factor to be used in plotting.
+```{r}
+dialogue_clean <- dialogue_clean%>% 
+  mutate(season = paste("Season", season)) %>% 
+         separate(title, c(NA, "title_short"), sep = ": ", remove = FALSE) %>%  # "c(NA, "title_short)" keeps only the second part of the separated string and saves it in "title_short"
+  mutate(title_short = factor(title_short, levels = unique(title_short)))  # factorize "title_short" keeping the order of the episodes
+  
+```
+
+Finally, we can "tokenize" our data-set, meaning (in this case) to split each line in individual words. Since we might still need the original "un-tokenized" version of our lines, let's create another data.frame:
+```{r}
+dialogue_token <- dialogue_clean %>% 
+  unnest_tokens(word, dialogue)  # tokenize "dialogue" and save single token in "word"
+```
+
+Now we can start answering some question!
+
+## How many words are spoken in every episode?
+
+We can visualize the answer by creating a barplot, indicating the number of words per episode. We can also divide the plot by seasons.
+```{r, fig.width=16, fig.height=16}
+
+# Prepare data.frame for plotting
+p <- dialogue_token %>% 
+  group_by(season, episode, title_short) %>%  # group first by "season" since episodes are numbered within seasons (add "title_short" to keep it in summary data.frame)
+  summarise(n_words = n()) %>%   # count words
+  ungroup()
+  
+# Prepare the plot:
+p %>% ggplot(aes(x = title_short, y = n_words, fill = season)) +
+  geom_col() +
+  facet_wrap(~ season, scales = "free_x") +
+  labs(x = "Episode", y = "Number of words", title = "Number of words in every episode of Stranger Things") +
+  scale_fill_manual(values = col_seasons) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 12)) +  # this function breaks the titles into multiple rows
+  theme_minimal() +
+  theme(plot.title = element_text(size = title_size),
+        axis.title = element_text(size = axis_title_size),
+        axis.title.x = element_text(vjust = -1),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = axis_label_size),
+        axis.text.x = element_text(vjust = 1),  # top-align labels
+        legend.position = "none",
+        strip.text.x = element_text(size = strip_size))
+
+```

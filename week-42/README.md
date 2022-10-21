@@ -9,14 +9,14 @@ From the [tidytuesday page of this week](https://github.com/rfordatascience/tidy
 
 - "episodes.csv":
 
-| !variable              | class     | description                      |
-| :--------------------- | :-------- | :------------------------------- |
-| !season                | integer   | Season number                    |
-| !episode               | integer   | Episode number within the season |
-| !title                 | character | Title of the episode             |
-| !directed_by           | character | Director(s) of the episode       |
-| !written_by            | character | Writer(s) of the episode         |
-| !original_release_date | character | Release date of the episode      |
+| variable              | class     | description                      |
+| :-------------------- | :-------- | :------------------------------- |
+| season                | integer   | Season number                    |
+| episode               | integer   | Episode number within the season |
+| title                 | character | Title of the episode             |
+| directed_by           | character | Director(s) of the episode       |
+| written_by            | character | Writer(s) of the episode         |
+| original_release_date | character | Release date of the episode      |
 
 - "stranger_things_all_dialogue.csv":
 
@@ -30,15 +30,3 @@ From the [tidytuesday page of this week](https://github.com/rfordatascience/tidy
 | dialogue        | character | Dialogue spoken within the episode                        |
 | start_time      | character | Time within the episode when the line starts being spoken |
 | end_time        | character | Time within the episode when the line stops being spoken  |
-
-This is the plan for the moment (might grow while exploring the data)
-
-- Prepare the data
-- Some text mining:
-  - Who talks the most in the series?
-  - Who has the longest dialogue?
-  - Who talks most with whom?
-- Sentiment analysis:
-  - Visualize the lexicon categories of the main characters
-  - Which are the most common positive and negative words in the series?
-  - What's the sentiment of the episodes across the seasons?
