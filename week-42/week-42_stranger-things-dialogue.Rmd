@@ -42,11 +42,9 @@ library(RColorBrewer)
 
 Load data from week 42:
 ```{r, message=FALSE}
-
 tuesdata <- tidytuesdayR::tt_load(2022, week = 42)  # Load datasets
 episodes <- tuesdata$episodes
 dialogue <- tuesdata$stranger_things_all_dialogue
-
 ```
 
 # Settings
