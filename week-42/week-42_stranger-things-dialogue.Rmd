@@ -1,0 +1,15 @@
+---
+title: "week-41_stranger-things-dialogue"
+author: "Francesco Grassi"
+date: "2022-10-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk(echo = TRUE)
+suppressPackageStartupMessages(library(tidyverse))
+options(dplyr.summarise.inform = FALSE)
+```
+
+
+
