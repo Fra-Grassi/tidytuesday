@@ -2,11 +2,23 @@
 title: "week-41_stranger-things-dialogue"
 author: "Francesco Grassi"
 date: "2022-10-21"
-output: html_document
+output: 
+  html_document:
+    fig_retina: 1
 ---
 
+<style type="text/css">
+.main-container {
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE,
+                      out.width="100%",
+                      fig.showtext = TRUE)  # to use "showtext" in R Markdown
 suppressPackageStartupMessages(library(tidyverse))
 options(dplyr.summarise.inform = FALSE)
 ```
@@ -21,7 +33,6 @@ So, for the moment, this is the plan (might grow while exploring the data)
 - Prepare the data
 - Some text mining:
   - How many words are spoken in every episode?
-  - How many lines of dialogue are there on average in each season?
   - How much of each episode consists of dialogue?
   - Plot distribution of dialogue moments in each episode
 - Sentiment analysis:
@@ -29,50 +40,62 @@ So, for the moment, this is the plan (might grow while exploring the data)
   - Which are the most common positive and negative words in the series?
   - What's the sentiment of the episodes across the seasons?
 
-# Libraries
-```{r}
+# Libraries and fonts
+```{r, message=FALSE}
 library(tidytuesdayR)
 library(tidyverse)
 library(tidytext)
 library(stringr)
-library(RColorBrewer)
+library(scales)  # custom axis scales
+library(showtext)  # Customize font in plots
+
+# Add font to use in plots:
+sysfonts::font_add(family = "Libre Baskerville", 
+                   regular = "LibreBaskerville-Regular.ttf",
+                   italic = "LibreBaskerville-Italic.ttf",
+                   bold = "LibreBaskerville-Bold.ttf")
+showtext_auto()  # automatically use "showtext" in new plots
 ```
 
 # Load data
 
 Load data from week 42:
 ```{r, message=FALSE}
-tuesdata <- tidytuesdayR::tt_load(2022, week = 42)  # Load datasets
-episodes <- tuesdata$episodes
-dialogue <- tuesdata$stranger_things_all_dialogue
+# tuesdata <- tidytuesdayR::tt_load(2022, week = 42)  # Load datasets
+# episodes <- tuesdata$episodes
+# dialogue <- tuesdata$stranger_things_all_dialogue
+# write_csv(episodes, file = "data/episodes.csv")
+# write_csv(dialogue, file = "data/dialogue.csv")
+episodes <- read_csv(file = "data/episodes.csv")
+dialogue <- read_csv(file = "data/dialogue.csv")
 ```
 
 # Settings
 
 Before we start, let's define some common variables and settings that will recur across the analysis.
 
+First we can define a nice color palette to use in the plots. I'm using a palette created by [Adam McCoid on Adobe Color](https://color.adobe.com/search?q=stranger%20things).  
+I'm going to use the four reds in the palette for the four seasons of the series, and the last "black" for plot backgrounds.
 ```{r}
-
-# Define a color to use for each season:
-col_seasons <- brewer.pal(9, "Reds")[6:9]  # Last 4 colors of RColorBrewer "Reds" palette are nice, in theme, and colorblind friendly
-
-# Define text size to use in all plots:
-title_size <- 35
-axis_title_size <- 15
-axis_label_size <- 10
-legend_title_size <- 15
-legend_text_size <- 10
-strip_size <- 15  # text size for facet labels
-
+seasons_palette <- c("#BF2C2C", "#8C262E", "#731F1F", "#401D23")
+background_color <- "#0D0506"
 ```
 
+Let's also define some settings to keep the text size coherent between plots:
+```{r}
+title_size <- 40
+axis_title_size <- 25
+axis_label_size <- 15
+legend_title_size <- 25
+legend_text_size <- 15
+strip_size <- 25  # text size for facet labels
+```
 
 # Part 1: Text mining
 
 Let's start with some text mining.  
 First of all we have to prepare our data. What we want to do is to extract only the dialogue parts, cleaning out all the music, noises, etc. (these are rows that contain a NA in "dialogue").  
 We must be aware that there are some non-dialogue lines that contain a single white space instead of a NA. Therefore we should also filter them out.
-
 ```{r}
 dialogue_clean <- dialogue %>% 
   select(season, episode, line, dialogue, start_time, end_time) %>%  # select variables of interest
@@ -85,18 +108,17 @@ NOTE: I'm going to use a left_join to merge the episode title to the new data.fr
 ```{r}
 dialogue_clean <- dialogue_clean %>% 
   left_join(y = episodes %>% select(season, episode, title),  # subset "episodes" df since we don't want to join all columns
-            by = c("season", "episode"))
+            by = c("season", "episode")) %>% 
+  mutate(episode = as.factor(episode))  # also factorize "episode" to plot as discrete
 ```
 
-We might also want to rename the season number adding a "Season" in front.  
-Moreover, we can also make the "title" variable prettier, by removing the "Chapter" part of it, and turn it into a factor to be used in plotting.
+We can also make the variable "season" nicer, by adding "Season" in front of the number:
 ```{r}
 dialogue_clean <- dialogue_clean%>% 
   mutate(season = paste("Season", season)) %>% 
-         separate(title, c(NA, "title_short"), sep = ": ", remove = FALSE) %>%  # "c(NA, "title_short)" keeps only the second part of the separated string and saves it in "title_short"
-  mutate(title_short = factor(title_short, levels = unique(title_short)))  # factorize "title_short" keeping the order of the episodes
-  
+         separate(title, c(NA, "title_short"), sep = ": ", remove = FALSE)  # "c(NA, "title_short)" keeps only the second part of the separated string and saves it in "title_short"
 ```
+
 
 Finally, we can "tokenize" our data-set, meaning (in this case) to split each line in individual words. Since we might still need the original "un-tokenized" version of our lines, let's create another data.frame:
 ```{r}
@@ -108,30 +130,52 @@ Now we can start answering some question!
 
 ## How many words are spoken in every episode?
 
-We can visualize the answer by creating a barplot, indicating the number of words per episode. We can also divide the plot by seasons.
-```{r, fig.width=16, fig.height=16}
+We can visualize the answer by creating a barplot, indicating the number of words per episode. We can also divide the plot by seasons.  
+I first tried to add episode title as axis labels, but the titles are too long and can't find a way to make it nice.  
+So and alternative solution is to:
 
+- modify the episode title column, adding a new-line character after the "Chapter X:" part
+- get rid of the episode axis labels
+- add the episode title INSIDE the bar
+```{r, fig.width=15, fig.height=12}
 # Prepare data.frame for plotting
 p <- dialogue_token %>% 
-  group_by(season, episode, title_short) %>%  # group first by "season" since episodes are numbered within seasons (add "title_short" to keep it in summary data.frame)
+  mutate(title = str_replace(title, pattern = ": ", replacement = ":\n")) %>%  # add new-line character to title
+  mutate(title = factor(title, levels = unique(title)),  # factorize "title" keeping the order of the episodes
+         episode = as.factor(episode)) %>%  # also factorize "episode" to plot as discrete
+  group_by(season, episode, title) %>%  # group first by "season" since episodes are numbered within seasons (add "title_short" to keep it in summary data.frame)
   summarise(n_words = n()) %>%   # count words
   ungroup()
-  
+
 # Prepare the plot:
-p %>% ggplot(aes(x = title_short, y = n_words, fill = season)) +
-  geom_col() +
-  facet_wrap(~ season, scales = "free_x") +
-  labs(x = "Episode", y = "Number of words", title = "Number of words in every episode of Stranger Things") +
-  scale_fill_manual(values = col_seasons) +
-  scale_x_discrete(labels = function(x) str_wrap(x, width = 12)) +  # this function breaks the titles into multiple rows
+p %>% ggplot(aes(x = fct_rev(episode), y = n_words, fill = season)) +  # x is reversed so that after "coord_flip" episodes are listed top-down
+  geom_col() +  # add bars
+  geom_text(  # add titles inside bars
+    aes(y = 100, hjust = 0, label = title),  # "y = 100" to add some padding from the x-axis
+    size = 9/.pt,  # ("/.pt" scales the text size unit of "geom_text" to the one of "element_text()")
+    color = "white",
+    family = "Libre Baskerville",
+    fontface = "bold") +
+  coord_flip() +
+  facet_wrap(~ season, scales = "free_y") +  # unlike "labs", this refers to coord AFTER flip 
+  labs(x = "Episode", 
+       y = "Number of words", 
+       title = str_wrap("Number of words in every episode of Stranger Things", width = 32)) +
+  scale_y_continuous(breaks = c(0, seq(1000, 8000, by = 1000)), labels = label_number(scale_cut = cut_short_scale())) +
+  scale_fill_manual(values = seasons_palette) +
   theme_minimal() +
-  theme(plot.title = element_text(size = title_size),
-        axis.title = element_text(size = axis_title_size),
-        axis.title.x = element_text(vjust = -1),
-        axis.title.y = element_text(vjust = 1),
-        axis.text = element_text(size = axis_label_size),
-        axis.text.x = element_text(vjust = 1),  # top-align labels
-        legend.position = "none",
-        strip.text.x = element_text(size = strip_size))
+  theme(text = element_text(family = "Libre Baskerville"),  # font family for entire plot
+        plot.title = element_text(size = title_size, color = "white", margin = margin(0, 0, 30, 0)),  # size, color, and margin of main title
+        plot.background = element_rect(fill = background_color),  # background of entire plotting area
+        plot.margin = margin(15, 20, 10, 10),  # adjust margins of plotting area
+        panel.grid.major.y = element_blank(),  # remove major grid for y axis
+        panel.grid.minor = element_blank(),  # remove minor grid for both axis
+        panel.spacing.y = unit(1.5, "lines"),  # change spacing between facets
+        axis.title = element_blank(),  # remove axis title
+        axis.text.x = element_text(size = axis_label_size, hjust = 0.5, vjust = -0.5, color = "white"),  # size, just, and color of x-axis labels
+        axis.text.y = element_blank(),  # remove y-axis label
+        legend.position = "none",  # remove legend
+        strip.text.x = element_text(size = strip_size, color = "white", margin = margin(0, 0, 15, 0))  # size, color, and margin of facet titles
+        )
 
 ```
