@@ -297,7 +297,7 @@ dialogue_time_long %>%
   with_inner_glow(  # Add glow to title
     geom_shadowtext(  # Add outline to title
       data = NULL,
-      aes(x = -0.2, y = 42, label = "Percentage of dialogue\nin Stranger Thingd episodes"),
+      aes(x = -0.2, y = 42, label = "Percentage of dialogue\nin Stranger Things episodes"),
       family = "Libre Baskerville", color = color_background, bg.color = color_title, size = (title_size+2)/.pt,
       inherit.aes = FALSE, lineheight = 1.2),
     sigma = title_sigma, expand = title_expand, color = color_title
