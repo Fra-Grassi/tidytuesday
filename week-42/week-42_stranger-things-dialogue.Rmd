@@ -4,6 +4,8 @@ author: "Francesco Grassi"
 date: "2022-10-21"
 output: 
   html_document:
+    toc: true
+    toc_depth: 2
     fig_retina: 1
 ---
 
@@ -16,11 +18,13 @@ output:
 </style>
 
 ```{r setup, include=FALSE}
+
 knitr::opts_chunk$set(echo = TRUE,
                       out.width="100%",
                       fig.showtext = TRUE)  # to use "showtext" in R Markdown
 suppressPackageStartupMessages(library(tidyverse))
 options(dplyr.summarise.inform = FALSE)
+
 ```
 
 # Aim
@@ -42,25 +46,34 @@ So, for the moment, this is the plan (might grow while exploring the data)
 
 # Libraries and fonts
 ```{r, message=FALSE}
+
 library(tidytuesdayR)
 library(tidyverse)
 library(tidytext)
 library(stringr)
+library(lubridate)
+library(colorspace)  # modify colors
 library(scales)  # custom axis scales
-library(showtext)  # Customize font in plots
+library(showtext)  # customize font in plots
+library(shadowtext)  # add outline to text
+library(ggfx)  # add glow to text
 
 # Add font to use in plots:
 sysfonts::font_add(family = "Libre Baskerville", 
                    regular = "LibreBaskerville-Regular.ttf",
                    italic = "LibreBaskerville-Italic.ttf",
                    bold = "LibreBaskerville-Bold.ttf")
-showtext_auto()  # automatically use "showtext" in new plots
+
+showtext_auto()
+# NOTE: when "showtext()" is enabled, it messes up with the font size in imgs SAVED VIA "GGSAVE()". I couldn't figure out how the "showtext_auto(FALSE)" before "ggsave()" works when multiple plots are saved. So the solution I'm using at the moment might not be the correct one
+
 ```
 
 # Load data
 
 Load data from week 42:
 ```{r, message=FALSE}
+
 # tuesdata <- tidytuesdayR::tt_load(2022, week = 42)  # Load datasets
 # episodes <- tuesdata$episodes
 # dialogue <- tuesdata$stranger_things_all_dialogue
@@ -68,6 +81,7 @@ Load data from week 42:
 # write_csv(dialogue, file = "data/dialogue.csv")
 episodes <- read_csv(file = "data/episodes.csv")
 dialogue <- read_csv(file = "data/dialogue.csv")
+
 ```
 
 # Settings
@@ -75,20 +89,56 @@ dialogue <- read_csv(file = "data/dialogue.csv")
 Before we start, let's define some common variables and settings that will recur across the analysis.
 
 First we can define a nice color palette to use in the plots. I'm using a palette created by [Adam McCoid on Adobe Color](https://color.adobe.com/search?q=stranger%20things).  
-I'm going to use the four reds in the palette for the four seasons of the series, and the last "black" for plot backgrounds.
+I'm going to use the four reds in the palette for the four seasons of the series, and the last "black" for plot backgrounds.  
+I'm also using another red for the "glow" of plot titles. HT to [Ansgar Wolsing](https://github.com/bydata/tidytuesday/tree/main/2022/42). I'm copying the approach (and same color) with "textshadow" and "ggfx" they used for the same tidytuesday challenge! Unfortunately, I didn't seem to make it with with faceted plots.
 ```{r}
+
 seasons_palette <- c("#BF2C2C", "#8C262E", "#731F1F", "#401D23")
-background_color <- "#0D0506"
+color_background <- "#0D0506"
+color_title <- "#B1281E"
+
 ```
 
-Let's also define some settings to keep the text size coherent between plots:
+Let's also define some settings to keep plots coherent:
 ```{r}
+
+# Settings for plot text:
 title_size <- 40
+title_sigma <- 3  # SD of the gaussian blur used for title glow with "ggfx::with_inner_glow"
+title_expand <- 0  # dilation of title glow for "ggfx::with_inner_glow"
 axis_title_size <- 25
 axis_label_size <- 15
 legend_title_size <- 25
 legend_text_size <- 15
 strip_size <- 25  # text size for facet labels
+
+# Settings for output images:
+figure_width <- 15
+figure_height <- 12
+figure_unit <- "in"
+figure_dpi <- 300
+
+```
+
+# Refine data.frames
+
+Before starting, it would be nice to make some changes to the two data.frames. This will help making our plots prettier (and easier to prepare)! What we want to do:
+
+- Add "Season" in front of season number
+- Turn "episode" into factor (to plot it as discrete variable)
+- Add a new-line character after the "Chapter X:" part of episode title and factorize it (otherwise titles are too long to plot in a single line)
+```{r}
+
+dialogue <- dialogue %>% 
+  mutate(season = paste("Season", season),
+         episode = as.factor(episode))
+
+episodes <- episodes %>% 
+  mutate(season = paste("Season", season),
+         episode = as.factor(episode),
+         title = str_replace(title, pattern = ": ", replacement = ":\n"),
+         title = factor(title, levels = unique(title)))
+
 ```
 
 # Part 1: Text mining
@@ -108,17 +158,8 @@ NOTE: I'm going to use a left_join to merge the episode title to the new data.fr
 ```{r}
 dialogue_clean <- dialogue_clean %>% 
   left_join(y = episodes %>% select(season, episode, title),  # subset "episodes" df since we don't want to join all columns
-            by = c("season", "episode")) %>% 
-  mutate(episode = as.factor(episode))  # also factorize "episode" to plot as discrete
+            by = c("season", "episode"))
 ```
-
-We can also make the variable "season" nicer, by adding "Season" in front of the number:
-```{r}
-dialogue_clean <- dialogue_clean%>% 
-  mutate(season = paste("Season", season)) %>% 
-         separate(title, c(NA, "title_short"), sep = ": ", remove = FALSE)  # "c(NA, "title_short)" keeps only the second part of the separated string and saves it in "title_short"
-```
-
 
 Finally, we can "tokenize" our data-set, meaning (in this case) to split each line in individual words. Since we might still need the original "un-tokenized" version of our lines, let's create another data.frame:
 ```{r}
@@ -132,17 +173,11 @@ Now we can start answering some question!
 
 We can visualize the answer by creating a barplot, indicating the number of words per episode. We can also divide the plot by seasons.  
 I first tried to add episode title as axis labels, but the titles are too long and can't find a way to make it nice.  
-So and alternative solution is to:
-
-- modify the episode title column, adding a new-line character after the "Chapter X:" part
-- get rid of the episode axis labels
-- add the episode title INSIDE the bar
+So and alternative solution is to get rid of the episode axis labels and add the episode title INSIDE the bar
 ```{r, fig.width=15, fig.height=12}
+
 # Prepare data.frame for plotting
 p <- dialogue_token %>% 
-  mutate(title = str_replace(title, pattern = ": ", replacement = ":\n")) %>%  # add new-line character to title
-  mutate(title = factor(title, levels = unique(title)),  # factorize "title" keeping the order of the episodes
-         episode = as.factor(episode)) %>%  # also factorize "episode" to plot as discrete
   group_by(season, episode, title) %>%  # group first by "season" since episodes are numbered within seasons (add "title_short" to keep it in summary data.frame)
   summarise(n_words = n()) %>%   # count words
   ungroup()
@@ -158,15 +193,15 @@ p %>% ggplot(aes(x = fct_rev(episode), y = n_words, fill = season)) +  # x is re
     fontface = "bold") +
   coord_flip() +
   facet_wrap(~ season, scales = "free_y") +  # unlike "labs", this refers to coord AFTER flip 
-  labs(x = "Episode", 
-       y = "Number of words", 
-       title = str_wrap("Number of words in every episode of Stranger Things", width = 32)) +
+  labs(title = "Number of words in\nStranger Things episodes",
+       x = "Episode", 
+       y = "Number of words") +
   scale_y_continuous(breaks = c(0, seq(1000, 8000, by = 1000)), labels = label_number(scale_cut = cut_short_scale())) +
   scale_fill_manual(values = seasons_palette) +
   theme_minimal() +
   theme(text = element_text(family = "Libre Baskerville"),  # font family for entire plot
-        plot.title = element_text(size = title_size, color = "white", margin = margin(0, 0, 30, 0)),  # size, color, and margin of main title
-        plot.background = element_rect(fill = background_color),  # background of entire plotting area
+        plot.title = element_text(size = title_size, color = color_title, hjust = 0.5, margin = margin(0, 0, 30, 0)),  # size, color, and margin of main title
+        plot.background = element_rect(fill = color_background),  # background of entire plotting area
         plot.margin = margin(15, 20, 10, 10),  # adjust margins of plotting area
         panel.grid.major.y = element_blank(),  # remove major grid for y axis
         panel.grid.minor = element_blank(),  # remove minor grid for both axis
@@ -175,7 +210,143 @@ p %>% ggplot(aes(x = fct_rev(episode), y = n_words, fill = season)) +  # x is re
         axis.text.x = element_text(size = axis_label_size, hjust = 0.5, vjust = -0.5, color = "white"),  # size, just, and color of x-axis labels
         axis.text.y = element_blank(),  # remove y-axis label
         legend.position = "none",  # remove legend
-        strip.text.x = element_text(size = strip_size, color = "white", margin = margin(0, 0, 15, 0))  # size, color, and margin of facet titles
+        strip.text.x = element_text(size = strip_size, color = color_title, margin = margin(0, 0, 15, 0))  # size, color, and margin of facet titles
         )
 
+showtext_auto(FALSE)
+ggsave(file = "img/words-per-episode.png", dpi = 300, width = 15, height = 12, units = "in" )
+
 ```
+
+## How much of each episode consists of dialogue?
+
+For this question we can think of a **pyramid plot**.  
+We can plot each episode as a bar, all with the same length, indicating the total (100%) episode duration. The left side of each bar will represent the percentage of the episode consisting of dialogue, and the right the non-dialogue part.  
+If we want to add episode titles to this plot too, it will be better to add them as a separate text element on one side of the figure.
+
+The plan requires some data preparation, using most of the data-frames created so far.  
+NOTE: in this section we'll need to work a lot with dates and durations. I'm still not very familiar with this type of data, so some of the following steps might be unnecessary or not the most efficient ones. Still learning :)
+
+First, we need to calculate the total duration of the dialogue in each episode. We can do that from the "dialogue_clean" data.frame, by calculating the time duration between "start_time" and "end_time". Then, we can sum up all the duration within each episode:
+```{r}
+dialogue_time <- dialogue_clean %>% 
+  mutate(start_time = hms(start_time),  # convert "start_time" to use with "lubridate"
+         end_time = hms(end_time)) %>%  # same for "end_time
+  mutate(duration_dialogue = as.duration(end_time - start_time)) %>%  # calculate duration
+  group_by(season, episode, title) %>% 
+  summarize(duration_dialogue = sum(duration_dialogue))  # sum dialog duration by episode
+```
+
+Now, we also need to find the total duration of each episode, in order to then calculate the percentage consisting in dialogue.  
+We can find this, by extracting the "end_time" value from the last line of each episode in the original "dialogue" data.frame (or at least this is the only indicator of the time of the episode's ending that we have at hand).
+```{r}
+episode_duration_df <- dialogue %>% 
+  group_by(season, episode) %>% 
+  filter(row_number() == n())  # extract last row per episode
+```
+
+And now we can add the "end_time" from "episode_duration_df" to "dialogue_time" and convert it to numeric  
+```{r}
+dialogue_time <- dialogue_time %>% 
+  left_join(y = episode_duration_df %>% 
+              select(season, episode, end_time),  # from "dialogue", select only variables of interest
+            by = c("season", "episode")) %>% 
+  mutate(end_time = as.numeric(end_time)) %>% 
+  rename(duration_total = end_time)  # also rename variable to keep it consistent
+```
+
+Let's then calculate the percentage of the episode consisting in dialogue and non-dialogue.  
+NOTE: we make the dialogue duration negative, which will help plotting it
+```{r}
+dialogue_time <- dialogue_time %>% 
+  mutate(perc_dialogue = -round(duration_dialogue/duration_total, 3),
+         perc_no_dialogue = 1 + perc_dialogue)
+```
+
+And now we can convert the data.frame to long, pivoting by the two dialogue proportions variables:
+```{r}
+dialogue_time_long <- dialogue_time %>% 
+  pivot_longer(col = c(perc_dialogue, perc_no_dialogue), values_to = "percentage", names_to = "dialogue") %>% 
+  mutate(dialogue = fct_recode(dialogue, dialogue = "perc_dialogue", no_dialogue = "perc_no_dialogue"))  # also factorize and recode the new variable
+```
+
+The idea is to have a pyramid plot, with dialogue portion on the left and non-dialogue on the right. We might want to add the percentages inside the bars. To facilitate this, we can create a new variable, providing a different x-coordinate for positive (non-dialogue) and negative (dialogue) percentages.  
+Moreover, I'm also going to create a new variable, providing the episode number ACROSS the entire series. We will use this variable to plot all the episode's data one under the other.  
+Lastly, we also want to display the episode titles. However, this time would be better to plot them in a single line, so let's remove the new-line character we added before.
+```{r}
+dialogue_time_long <- dialogue_time_long %>% 
+  mutate(x_coord = case_when(  # add x-coord
+    percentage < 0 ~ -0.053,  # slightly different values to compensate for left/right just
+    percentage > 0 ~ 0.055)) %>% 
+  group_by(dialogue) %>%  # repeat episode number for the two dialogue conditions
+  mutate(total_episode = as.factor(row_number())) %>%  # calculate total episode number
+  mutate(title = str_replace(title, pattern = ":\n", replacement = ": "))  # remove new-line character
+```
+
+Finally, let's prepare a more complex palette for this plot. We are going to have two coloring factors, the dialogue/non-dialogue proportion, and the season. In order to manually define the colors to use, we must define a vector of colors made from the four colors for the seasons, which we will use for the "dialogue" part of the plot, followed by the same colors but desaturated, to use for the "non-dialogue" part.
+```{r}
+season_dialogue_palette <- c(seasons_palette, desaturate(seasons_palette, 0.7))  # Define color palette
+```
+
+And now let's plot!
+```{r, fig.width=15, fig.height=12}
+
+dialogue_time_long %>% 
+  ggplot(aes(x = percentage, y = fct_rev(total_episode), fill = interaction(season, dialogue))) +  # x is reversed so that after "coord_flip" episodes are listed top-down
+  geom_col(width = 0.8) +
+  with_inner_glow(  # Add glow to title
+    geom_shadowtext(  # Add outline to title
+      data = NULL,
+      aes(x = -0.2, y = 42, label = "Percentage of dialogue\nin Stranger Thingd episodes"),
+      family = "Libre Baskerville", color = color_background, bg.color = color_title, size = (title_size+2)/.pt,
+      inherit.aes = FALSE, lineheight = 1.2),
+    sigma = title_sigma, expand = title_expand, color = color_title
+    ) +
+  geom_text(  # add episode titles
+    aes(x = -1.15, y = fct_rev(total_episode), hjust = 0, label = title),  # "y = 100" to add some padding from the x-axis
+    size = 9/.pt,  # ("/.pt" scales the text size unit of "geom_text" to the one of "element_text()")
+    color = color_title,
+    family = "Libre Baskerville",
+    fontface = "bold") +
+  geom_text(  # add percentages inside bars
+    aes(x = x_coord, y = fct_rev(total_episode), label = percent(abs(percentage))),  # turn "percentage" into character with "%" sign
+    size = 9/.pt,
+    color = "white",
+    family = "Libre Baskerville",
+    fontface = "bold") +
+  # Add season names:
+  annotate("text", x = -1.1, y = -3, label = "Season 1", hjust = 0, size = axis_title_size/.pt, color = "white", family = "Libre Baskerville", fontface = "bold") +
+  annotate("text", x = -0.7, y = -3, label = "Season 2", hjust = 0, size = axis_title_size/.pt, color = "white", family = "Libre Baskerville", fontface = "bold") +
+  annotate("text", x = -1.1, y = -6, label = "Season 3", hjust = 0, size = axis_title_size/.pt, color = "white", family = "Libre Baskerville", fontface = "bold") +
+  annotate("text", x = -0.7, y = -6, label = "Season 4", hjust = 0, size = axis_title_size/.pt, color = "white", family = "Libre Baskerville", fontface = "bold") +
+  # Add season color:
+  annotate("point", x = -1.13, y = -3, size = axis_title_size/.pt, color = seasons_palette[1]) +
+  annotate("point", x = -0.73, y = -3, size = axis_title_size/.pt, color = seasons_palette[2]) +
+  annotate("point", x = -1.13, y = -6, size = axis_title_size/.pt, color = seasons_palette[3]) +
+  annotate("point", x = -0.73, y = -6, size = axis_title_size/.pt, color = seasons_palette[4]) +
+  geom_text(  # add "Dialogue" text
+    aes(x = -0.2, y = 35.5, label = "Dialogue"), size = axis_label_size/.pt, color = "white", family = "Libre Baskerville", fontface = "bold") +
+  geom_text(  # add "Not Dialogue" text
+    aes(x = 0.22, y = 35.5, label = "Not dialogue"), size = axis_label_size/.pt, color = "white", family = "Libre Baskerville", fontface = "bold") +
+  coord_cartesian(xlim = c(-0.7, 0.7),
+                  clip = "off") +  # make drawing not clipped to the plot panel (allows to add "geom_text" outside plot area)
+  scale_x_continuous(breaks = seq(-0.7, 0.7, by = 0.1), labels = percent_format(scale = 1)) +
+  scale_fill_manual(values = season_dialogue_palette) +
+  theme_minimal() +
+  theme(text = element_text(family = "Libre Baskerville"),  # font family for entire plot
+        plot.background = element_rect(fill = color_background),  # background of entire plotting area
+        plot.margin = margin(70, 0, 25, 220),  # adjust margins of plotting area
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.title = element_blank(),
+        axis.text = element_blank(),
+        legend.position = "none")
+
+showtext_auto(FALSE)
+ggsave(file = "img/percentage-dialogue.png", dpi = 300, width = 15, height = 12, units = "in" )
+
+```
+
+
+
+
