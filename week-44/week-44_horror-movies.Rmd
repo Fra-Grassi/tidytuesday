@@ -42,13 +42,39 @@ library(colorspace)  # modify colors
 library(scales)  # custom axis scales
 library(showtext)  # customize font in plots
 
-# Add font to use in plots:
-sysfonts::font_add(family = "Libre Baskerville", 
-                   regular = "LibreBaskerville-Regular.ttf",
-                   italic = "LibreBaskerville-Italic.ttf",
-                   bold = "LibreBaskerville-Bold.ttf")
-
 showtext_auto()
+```
+
+# Plot settings
+
+Let's define some settings to keep plots coherent:
+```{r}
+
+# Add some horror fonts to use in plots:
+sysfonts::font_add(family = "The Truth Will Out", regular = "truthwillout.ttf")
+sysfonts::font.add(family = "Blackwood Castle", regular = "Blackwood Castle.ttf")
+
+# Size of plot text:
+title_size <- 60
+axis_title_size <- 30
+axis_label_size <- 30
+legend_title_size <- 22
+legend_text_size <- 12
+strip_size <- 22  # text size for facet labels
+
+# Size of output images:
+figure_width <- 20
+figure_height <- 14
+figure_unit <- "in"
+figure_dpi <- 300
+
+```
+
+Let's also define a nice color palette. Here I'm starting from beautifully horror [sleepover](https://www.color-hex.com/color-palette/58166) palette by [Bluetris](https://www.color-hex.com/member/bluetris). The original palette has 5 colors. Let's interpolate to at least 8, to cover e.g. the release decades (50s-2020s) of the data-base.
+
+```{r}
+horror_palette <- colorRampPalette(c("#162e2e", "#362e2e", "#562e2e", "#762e2e", "#962e2e"), bias = 0.8)(8)
+show_col(horror_palette)
 ```
 
 # Prepare data
@@ -66,88 +92,60 @@ raw_data <- read_csv(file = "data/raw-data.csv")
 ## Clean and prepare data
 
 First, we will focus only on movies which have been released, so we will filter them for "status".  
-We also want to extract the decade each movie was released from the release data variable. This might turn useful in many plots
+We also want to extract the month, year and the decade each movie was released from the release data variable. This might turn useful in many plots
 
 ```{r}
 main_df <- raw_data %>% 
   filter(status == "Released") %>% 
-  mutate(decade = year(release_date) - year(release_date)%%10)  # find decade (maybe not the most elegant way)
+  mutate(release_month = month(release_date),
+         release_year = year(release_date),
+         release_decade = year(release_date) - year(release_date)%%10)  # find decade (maybe not the most elegant way)
 ```
 
 # Plots
 
-## Plot settings
+## Top rated movie by decade
 
-Let's define some settings to keep plots coherent:
-```{r}
+Here we want to create an horizontal bar plot, indicating the highest rated movie per decade. We can add the title of the movie inside the bar, and maybe the value of therating right outside the bar.
 
-color_title <- "#B1281E"  # title color
-color_background <- "#0D0506"  # background color
-
-# Settings for plot text:
-title_size <- 40
-axis_title_size <- 22
-axis_label_size <- 12
-legend_title_size <- 22
-legend_text_size <- 12
-strip_size <- 22  # text size for facet labels
-
-# Settings for output images:
-figure_width <- 20
-figure_height <- 14
-figure_unit <- "in"
-figure_dpi <- 300
-
-```
-
-## Top 3 movies per decade
-
-### Select data
-
-We should keep in mind that many movies have a very high average score, but were rated by only one or very few people. This would lead to very distorted results. Therefore, let's select the highest rated movies only among the top 1% by vote count within each decade.  
-Moreover, we will use vote count also to break possible ties.  
-Therefore, one way to go (maybe not the most elegant one) is to select the top 1% movies by vote count within each decade. Then, order the movies by vote average, and *within* it, by vote count. This way, by selecting the first 3 rows per decade, we'll select the highest rated movies and will break ties based on highest vote count.
+We should keep in mind that many movies have a very high average score, but were rated by only one or very few people. This would lead to very distorted results. Therefore, let's select the highest rated movies only among the top 1% by vote count within each decade. Moreover, we also have to take care of ties. What we can do, (maybe not the most elegant one) is to select the top 1% movies by vote count within each decade. Then, order the movies by vote average, and *within* it, by vote count. This way, by selecting the first row per decade, we'll select the highest rated movie and will break ties based on highest vote count.
 
 ```{r}
 p <- main_df %>% 
-  group_by(decade) %>% 
+  group_by(release_decade) %>% 
   filter(vote_count > quantile(vote_count, .99)) %>%  # select top 1%
   arrange(desc(vote_average), desc(vote_count), .by_group = TRUE) %>%  # "arrange()" must be told explicitly to keep groups into account 
-  slice_head(n = 3)  # select top 3 movies
+  slice_head(n = 1)  # select top movie
 ```
 
-### Plot
-
-It's finally possible to plot the selected data. We can use a bar plot, and facet by decade. Let's also add the average vote on top of each column.
-
+Now we can plot the data:
 ```{r, fig.width=20, fig.height=14}
 
-p %>% mutate(title = factor(title, levels = unique(title))) %>%  # prevent movies to be arranged by title
-  ggplot(aes(x = title, y = vote_average)) +
-  geom_col(fill = color_title) +
-  geom_text(aes(label = vote_average), vjust = -0.5, color = "white", family = "Libre Baskerville", size = axis_title_size/.pt) +
-  scale_x_discrete(labels = wrap_format(15)) +  # wrap long titles
-  scale_y_continuous(limits = c(0, 9), breaks = 0:9, labels = 0:9 ) +
-  facet_wrap(~ decade, nrow = 2, scales = "free_x") +
-  labs(title = "Top 3 Horror Movies per Decade",
+p %>% mutate(title = factor(title, levels = unique(title)),  # prevent movies to be arranged by title
+             release_decade = factor(release_decade, levels = unique(release_decade))) %>%  # factorize release decade to arrange it afterward
+  ggplot(aes(x = fct_rev(release_decade), y = vote_average)) +  # use "fct_rev" to organize decade in ascending order
+  geom_col(fill = horror_palette) +
+  geom_text(aes(y = 0.2, label = title), hjust = 0, color = "white", family = "Blackwood Castle", size = axis_title_size/.pt) +  # add movie titles
+  geom_text(aes(label = vote_average), hjust = 1.7, color = "white", family = "Blackwood Castle", size = axis_title_size/.pt) +  # add rating
+  scale_y_discrete(expand = c(0, 0.05)) +  # reduce space between decade labels and bars
+  coord_flip() +
+  labs(title = "Highest Rated Horror Movie per Decade",
+       subtitle = "Data from themoviedb.org",
        y = "Average Score") +
   theme_minimal() +
   theme(
-    text = element_text(family = "Libre Baskerville", face = "bold"),
-    plot.title = element_text(size = title_size, color = color_title),
-    axis.title.x = element_blank(),
-    axis.title.y = element_text(size = axis_title_size, color = color_title),
-    axis.text = element_text(size = axis_label_size, color = color_title),
-    strip.text = element_text(size = strip_size, color = color_title),
-    panel.grid.major.x = element_blank(),
-    panel.grid.major.y = element_line(color = "grey30"),
-    panel.grid.minor = element_blank(),
-    panel.spacing.y = unit(1.5, "lines"),  # change spacing between facets
-    plot.background = element_rect(fill = color_background),
-    plot.margin = margin(20, 20, 10, 10)  # adjust margins of plotting area
+    plot.title = element_text(size = title_size, family = "Blackwood Castle"),
+    plot.subtitle = element_text(size = axis_title_size, family = "Blackwood Castle"),
+    axis.title.x = element_text(size = axis_title_size, family = "Blackwood Castle"),
+    axis.title.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(size = axis_label_size, family = "Blackwood Castle"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+    ,plot.margin = margin(20, 20, 10, 10)  # adjust margins of plotting area
   )
 
 showtext_auto(FALSE)
-ggsave(file = "img/top_3_votes.png", dpi = figure_dpi, width = figure_width, height = figure_height, units = figure_unit, bg = "white")
+ggsave(file = "img/top-movie-by-decade.png", dpi = figure_dpi, width = figure_width, height = figure_height, units = figure_unit, bg = "white")
 ```
 
