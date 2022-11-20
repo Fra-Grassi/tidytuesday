@@ -148,4 +148,3 @@ p %>% mutate(title = factor(title, levels = unique(title)),  # prevent movies to
 showtext_auto(FALSE)
 ggsave(file = "img/top-movie-by-decade.png", dpi = figure_dpi, width = figure_width, height = figure_height, units = figure_unit, bg = "white")
 ```
-
