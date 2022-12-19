@@ -29,7 +29,8 @@ Play around and make some nice plot out of the big data-set of ~35K horror movie
 Here's the plan:
 
 - Prepare the data
-- Plot top 3 movies per decade, based on average rating
+- Plot top movies per decade, based on average rating
+- Do some sentiment analysis, to plot the sentiment of the movie "overview" across the years
 
 # Libraries
 ```{r, message=FALSE}
@@ -70,11 +71,25 @@ figure_dpi <- 300
 
 ```
 
-Let's also define a nice color palette. Here I'm starting from beautifully horror [sleepover](https://www.color-hex.com/color-palette/58166) palette by [Bluetris](https://www.color-hex.com/member/bluetris). The original palette has 5 colors. Let's interpolate to at least 8, to cover e.g. the release decades (50s-2020s) of the data-base.
+## Palettes
+
+Let's also define some nice color palette.  
+
+### Release decades
+
+First, let's define a palette for the release decades, to use in our first plot. Here I'm starting from beautifully horror [sleepover](https://www.color-hex.com/color-palette/58166) palette by [Bluetris](https://www.color-hex.com/member/bluetris). The original palette has 5 colors. Let's interpolate to at least 8, to cover e.g. the release decades (50s-2020s) of the data-base.
 
 ```{r}
-horror_palette <- colorRampPalette(c("#162e2e", "#362e2e", "#562e2e", "#762e2e", "#962e2e"), bias = 0.8)(8)
-show_col(horror_palette)
+palette_decades <- colorRampPalette(c("#162e2e", "#362e2e", "#562e2e", "#762e2e", "#962e2e"), bias = 0.8)(8)
+show_col(palette_decades)
+```
+
+### Sentiment 
+
+For our second plot, we can define a different color for each sentiment to plot. We're going to use the "nrc" lexicon, which has 10 sentiments, of which we will use 8 (we won't use the general "negative" and "positive"). Even here I start from another beautiful palette by Bluetris, this time the [piano lessons](https://www.color-hex.com/color-palette/58553). Also here, we interpolate the original 5 colors to 8:
+```{r}
+palette_sentiment <- colorRampPalette(c("#617e7b", "#5c5a52", "#303039", "#564d5f", "#a06e6e"), bias = 1)(8)
+show_col(palette_sentiment)
 ```
 
 # Prepare data
@@ -102,11 +117,9 @@ main_df <- raw_data %>%
          release_decade = year(release_date) - year(release_date)%%10)  # find decade (maybe not the most elegant way)
 ```
 
-# Plots
+# Top rated movie by decade
 
-## Top rated movie by decade
-
-Here we want to create an horizontal bar plot, indicating the highest rated movie per decade. We can add the title of the movie inside the bar, and maybe the value of therating right outside the bar.
+Here we want to create an horizontal bar plot, indicating the highest rated movie per decade. We can add the title of the movie inside the bar, and maybe the value of the rating right inside the bar.
 
 We should keep in mind that many movies have a very high average score, but were rated by only one or very few people. This would lead to very distorted results. Therefore, let's select the highest rated movies only among the top 1% by vote count within each decade. Moreover, we also have to take care of ties. What we can do, (maybe not the most elegant one) is to select the top 1% movies by vote count within each decade. Then, order the movies by vote average, and *within* it, by vote count. This way, by selecting the first row per decade, we'll select the highest rated movie and will break ties based on highest vote count.
 
@@ -118,13 +131,15 @@ p <- main_df %>%
   slice_head(n = 1)  # select top movie
 ```
 
+## Ploting
+
 Now we can plot the data:
 ```{r, fig.width=20, fig.height=14}
 
 p %>% mutate(title = factor(title, levels = unique(title)),  # prevent movies to be arranged by title
              release_decade = factor(release_decade, levels = unique(release_decade))) %>%  # factorize release decade to arrange it afterward
   ggplot(aes(x = fct_rev(release_decade), y = vote_average)) +  # use "fct_rev" to organize decade in ascending order
-  geom_col(fill = horror_palette) +
+  geom_col(fill = palette_decades) +
   geom_text(aes(y = 0.2, label = title), hjust = 0, color = "white", family = "Blackwood Castle", size = axis_title_size/.pt) +  # add movie titles
   geom_text(aes(label = vote_average), hjust = 1.7, color = "white", family = "Blackwood Castle", size = axis_title_size/.pt) +  # add rating
   scale_y_discrete(expand = c(0, 0.05)) +  # reduce space between decade labels and bars
@@ -148,3 +163,42 @@ p %>% mutate(title = factor(title, levels = unique(title)),  # prevent movies to
 showtext_auto(FALSE)
 ggsave(file = "img/top-movie-by-decade.png", dpi = figure_dpi, width = figure_width, height = figure_height, units = figure_unit, bg = "white")
 ```
+
+# Sentiment Analysis
+
+Let's now do some sentiment analysis on the movies "overview". We're going to use the **"nrc"** lexicon, which categorizes words into ten positive and negative emotions. Of these ten, we're going to use 8, since the other two are general "positive" and "negative", and I feel they wouldn't be too informative.
+
+## Tokenization
+
+First of all, we must tokenize the "overview" column of our main dataset into individual words, which we'll then use for the sentiment analysis.  
+For this step, we might also want to remove the movies with no overview, and select only variables of interest.  
+(We might also want to remove stopwords after tokenization, but this is not necessary since in the end we'll retain only words that are present in the nrc lexicon)
+```{r}
+token_df <- main_df %>% 
+  drop_na(overview) %>% 
+  select(title, overview, release_year) %>% 
+  unnest_tokens(word, overview)
+```
+
+## Categorize words
+
+Now that we have our tokenized data.frame, we can categorize each word by sentiment.
+
+First of all, get the sentiment lexicon and remove "positive" and "negative" sentiments:
+```{r}
+nrc_lexicon <- get_sentiments("nrc") %>% 
+  filter(!(sentiment %in% c("positive", "negative")))
+```
+
+Now we can use "inner_join" to retain from our tokenized df only the words that are shared with the lexicon:
+```{r}
+sentiment_df <- token_df %>% 
+  inner_join(nrc_lexicon)
+```
+
+## Summarize sentiment
+
+Now, obviosuly every 
+
+
+
