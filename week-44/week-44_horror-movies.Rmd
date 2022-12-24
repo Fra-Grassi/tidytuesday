@@ -30,7 +30,7 @@ Here's the plan:
 
 - Prepare the data
 - Plot top movies per decade, based on average rating
-- Do some sentiment analysis, to plot the sentiment of the movie "overview" across the years
+- Do some sentiment analysis, to plot the sentiments elicited by movie titles across the years
 
 # Libraries
 ```{r, message=FALSE}
@@ -124,7 +124,7 @@ Here we want to create an horizontal bar plot, indicating the highest rated movi
 We should keep in mind that many movies have a very high average score, but were rated by only one or very few people. This would lead to very distorted results. Therefore, let's select the highest rated movies only among the top 1% by vote count within each decade. Moreover, we also have to take care of ties. What we can do, (maybe not the most elegant one) is to select the top 1% movies by vote count within each decade. Then, order the movies by vote average, and *within* it, by vote count. This way, by selecting the first row per decade, we'll select the highest rated movie and will break ties based on highest vote count.
 
 ```{r}
-p <- main_df %>% 
+top_plot <- main_df %>% 
   group_by(release_decade) %>% 
   filter(vote_count > quantile(vote_count, .99)) %>%  # select top 1%
   arrange(desc(vote_average), desc(vote_count), .by_group = TRUE) %>%  # "arrange()" must be told explicitly to keep groups into account 
@@ -135,8 +135,7 @@ p <- main_df %>%
 
 Now we can plot the data:
 ```{r, fig.width=20, fig.height=14}
-
-p %>% mutate(title = factor(title, levels = unique(title)),  # prevent movies to be arranged by title
+top_plot %>% mutate(title = factor(title, levels = unique(title)),  # prevent movies to be arranged by title
              release_decade = factor(release_decade, levels = unique(release_decade))) %>%  # factorize release decade to arrange it afterward
   ggplot(aes(x = fct_rev(release_decade), y = vote_average)) +  # use "fct_rev" to organize decade in ascending order
   geom_col(fill = palette_decades) +
@@ -161,22 +160,26 @@ p %>% mutate(title = factor(title, levels = unique(title)),  # prevent movies to
   )
 
 showtext_auto(FALSE)
+```
+
+And finally save the plot:
+```{r}
 ggsave(file = "img/top-movie-by-decade.png", dpi = figure_dpi, width = figure_width, height = figure_height, units = figure_unit, bg = "white")
 ```
 
 # Sentiment Analysis
 
-Let's now do some sentiment analysis on the movies "overview". We're going to use the **"nrc"** lexicon, which categorizes words into ten positive and negative emotions. Of these ten, we're going to use 8, since the other two are general "positive" and "negative", and I feel they wouldn't be too informative.
+Let's now do some sentiment analysis on the movie titles. We're going to use the **"nrc"** lexicon, which categorizes words into ten positive and negative emotions. Of these ten, we're going to use 8, since the other two are general "positive" and "negative", and I feel they wouldn't be too informative.
 
 ## Tokenization
 
-First of all, we must tokenize the "overview" column of our main dataset into individual words, which we'll then use for the sentiment analysis.  
+First of all, we must tokenize the "title" column of our main dataset into individual words, which we'll then use for the sentiment analysis.
 For this step, we might also want to remove the movies with no overview, and select only variables of interest.  
 (We might also want to remove stopwords after tokenization, but this is not necessary since in the end we'll retain only words that are present in the nrc lexicon)
 ```{r}
 token_df <- main_df %>% 
   drop_na(overview) %>% 
-  select(title, overview, release_year) %>% 
+  select(id, title, overview, release_year) %>% 
   unnest_tokens(word, overview)
 ```
 
@@ -196,9 +199,41 @@ sentiment_df <- token_df %>%
   inner_join(nrc_lexicon)
 ```
 
-## Summarize sentiment
+## Summarize by year
 
-Now, obviosuly every 
+Let's count sentiment by year. This is in the end what we want to plot: how the presence of each sentiment in movies' overviews changed across time:
+```{r}
+sentiment_by_year_df <- sentiment_df %>% 
+  group_by(release_year, sentiment) %>% 
+  summarise(sentiment_count = n())
+```
 
+we might also want to account for the fact that the total number of released movies increased across the years. If we don't, the sentiment count will be influenced by the number of released movies. One way to account for it might be to normalize the count over the number of movies released in each year.  
+To do so, let's go back to the "main_df", calculate the number of movies released in each year, and use that to normalize the sentiment count:
+```{r}
+sentiment_by_year_df <- sentiment_by_year_df %>% 
+  left_join(main_df %>%
+              drop_na(overview) %>%   # still consider only movies with an overview
+              group_by(release_year) %>% 
+              summarise(movie_number = n())) %>%  # count number of movies per year
+  mutate(sentiment_count_norm = sentiment_count/movie_number)  # normalize sentiment count over movie number
+```
 
+## Plotting
 
+It's finally time to plot! We want to plot the number of appearances of each sentiment in the movies' overview across the years. We can go for a line plot, with years on the x-axis and count of sentiments on the y-axis.
+
+First, we want factorize the "sentiment" variable in our df, and order the levels to match the palette chosen for this plot (this is totally arbitrary, I know):
+```{r}
+sentiment_plot <- sentiment_by_year_df %>% 
+  mutate(sentiment = factor(sentiment, levels = c("disgust", "sadness", "anger", "fear", "surprise", "anticipation", "trust", "joy")))
+```
+
+Let's now create the plot
+```{r, fig.width=20, fig.height=14}
+
+sentiment_by_year_df %>% ggplot(aes(x = release_year, y = sentiment_count_norm, color = sentiment)) +
+  geom_smooth(method = "loess", se = FALSE) +
+  scale_color_manual(values = palette_sentiment)
+  
+```
