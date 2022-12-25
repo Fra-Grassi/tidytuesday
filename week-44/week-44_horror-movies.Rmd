@@ -86,9 +86,9 @@ show_col(palette_decades)
 
 ### Sentiment 
 
-For our second plot, we can define a different color for each sentiment to plot. We're going to use the "nrc" lexicon, which has 10 sentiments, of which we will use 8 (we won't use the general "negative" and "positive"). Even here I start from another beautiful palette by Bluetris, this time the [piano lessons](https://www.color-hex.com/color-palette/58553). Also here, we interpolate the original 5 colors to 8:
+For our second plot, we can define a different color for each sentiment to plot. We're going to use the "nrc" lexicon, which has 10 sentiments, of which we will use 8 (we won't use the general "negative" and "positive"). Even here I start from another beautiful palette by Bluetris, this time the [too bad](https://www.color-hex.com/color-palette/58926), to which I added other three colors from [Coolors](https://coolors.co/) to get to 8:
 ```{r}
-palette_sentiment <- colorRampPalette(c("#617e7b", "#5c5a52", "#303039", "#564d5f", "#a06e6e"), bias = 1)(8)
+palette_sentiment <- c("#3e437b", "#9e5577", "#a94646", "#D5BBB1", "#C6A15B", "#e3e517", "#6ecb95", "#606C38")
 show_col(palette_sentiment)
 ```
 
@@ -173,14 +173,13 @@ Let's now do some sentiment analysis on the movie titles. We're going to use the
 
 ## Tokenization
 
-First of all, we must tokenize the "title" column of our main dataset into individual words, which we'll then use for the sentiment analysis.
-For this step, we might also want to remove the movies with no overview, and select only variables of interest.  
-(We might also want to remove stopwords after tokenization, but this is not necessary since in the end we'll retain only words that are present in the nrc lexicon)
+First of all, we must tokenize the "title" column of our main dataset into individual words, which we'll then use for the sentiment analysis.  
+We also want to remove stop-words from our analysis:
 ```{r}
 token_df <- main_df %>% 
-  drop_na(overview) %>% 
-  select(id, title, overview, release_year) %>% 
-  unnest_tokens(word, overview)
+  select(id, title, release_year) %>% 
+  unnest_tokens(word, title) %>% 
+  anti_join(stop_words)
 ```
 
 ## Categorize words
@@ -201,39 +200,57 @@ sentiment_df <- token_df %>%
 
 ## Summarize by year
 
-Let's count sentiment by year. This is in the end what we want to plot: how the presence of each sentiment in movies' overviews changed across time:
+Let's count sentiment by year. This is in the end what we want to plot: how the presence of each sentiment in movie titles changed across time.  
+We might also want to account for the fact that the total number of released movies increased across the years. If we don't, the sentiment count will be influenced by the number of released movies. One way to account for this might be to normalize the count over the number of movies released in each year:
 ```{r}
 sentiment_by_year_df <- sentiment_df %>% 
+  group_by(release_year) %>% 
+  mutate(tot_year = n()) %>%  # count number of movies per year
+  ungroup() %>% 
   group_by(release_year, sentiment) %>% 
-  summarise(sentiment_count = n())
-```
-
-we might also want to account for the fact that the total number of released movies increased across the years. If we don't, the sentiment count will be influenced by the number of released movies. One way to account for it might be to normalize the count over the number of movies released in each year.  
-To do so, let's go back to the "main_df", calculate the number of movies released in each year, and use that to normalize the sentiment count:
-```{r}
-sentiment_by_year_df <- sentiment_by_year_df %>% 
-  left_join(main_df %>%
-              drop_na(overview) %>%   # still consider only movies with an overview
-              group_by(release_year) %>% 
-              summarise(movie_number = n())) %>%  # count number of movies per year
-  mutate(sentiment_count_norm = sentiment_count/movie_number)  # normalize sentiment count over movie number
+  summarize(sentiment_count = n(),  # count sentiment occurrences per year
+            tot_year = unique(tot_year),  # keep total number of movies per year
+            sentiment_count_norm = sentiment_count/tot_year)  # normalize sentiment count over number of movies
 ```
 
 ## Plotting
 
-It's finally time to plot! We want to plot the number of appearances of each sentiment in the movies' overview across the years. We can go for a line plot, with years on the x-axis and count of sentiments on the y-axis.
+It's finally time to plot! We want to plot the number of appearances of each sentiment in the movie titles across the years. We can go for a line plot, with years on the x-axis and count of sentiments on the y-axis.
+
+**NOTE**: after some quick preliminary plotting, it appears that although the normalization step above, data from the earlier movies still shows a great deal of variance, especially a huge peak in the "fear" sentiment in 1953, which flattens the rest of the plot. Just to make the final figure more appealing, for the moment we **focus only on the movies from 2000 on**:
+```{r}
+sentiment_plot <- sentiment_by_year_df %>% 
+  filter(release_year >= 2000)
+```
 
 First, we want factorize the "sentiment" variable in our df, and order the levels to match the palette chosen for this plot (this is totally arbitrary, I know):
 ```{r}
-sentiment_plot <- sentiment_by_year_df %>% 
+sentiment_plot <- sentiment_plot %>% 
   mutate(sentiment = factor(sentiment, levels = c("disgust", "sadness", "anger", "fear", "surprise", "anticipation", "trust", "joy")))
 ```
 
 Let's now create the plot
 ```{r, fig.width=20, fig.height=14}
+sentiment_plot %>% 
+  ggplot(aes(x = release_year, y = sentiment_count_norm, color = sentiment)) +
+  geom_line(size = 3) + 
+  scale_color_manual(values = palette_sentiment) + 
+  labs(title = "Sentiments Elicited by Horror Movie Titles",
+       subtitle = "Data from themoviedb.org",
+       x = "Year",
+       y = "Percentage of Titles") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = title_size, family = "Blackwood Castle"),
+    plot.subtitle = element_text(size = axis_title_size, family = "Blackwood Castle"),
+    axis.title = element_text(size = axis_title_size, family = "Blackwood Castle"),
+    #axis.title.y = element_blank(),
+    #axis.text.x = element_blank(),
+    axis.text = element_text(size = axis_label_size, family = "Blackwood Castle", color = "black"),
+    panel.grid.major = element_blank(),
+    #panel.grid.minor = element_blank(),
+    plot.margin = margin(20, 20, 10, 10)  # adjust margins of plotting area
+  )
 
-sentiment_by_year_df %>% ggplot(aes(x = release_year, y = sentiment_count_norm, color = sentiment)) +
-  geom_smooth(method = "loess", se = FALSE) +
-  scale_color_manual(values = palette_sentiment)
-  
+showtext_auto(FALSE)
 ```
