@@ -46,36 +46,11 @@ library(showtext)  # customize font in plots
 showtext_auto()
 ```
 
-# Plot settings
+# Palettes
 
-Let's define some settings to keep plots coherent:
-```{r}
+Let's define some nice color palette.  
 
-# Add some horror fonts to use in plots:
-sysfonts::font_add(family = "The Truth Will Out", regular = "truthwillout.ttf")
-sysfonts::font.add(family = "Blackwood Castle", regular = "Blackwood Castle.ttf")
-
-# Size of plot text:
-title_size <- 60
-axis_title_size <- 30
-axis_label_size <- 30
-legend_title_size <- 22
-legend_text_size <- 12
-strip_size <- 22  # text size for facet labels
-
-# Size of output images:
-figure_width <- 20
-figure_height <- 14
-figure_unit <- "in"
-figure_dpi <- 300
-
-```
-
-## Palettes
-
-Let's also define some nice color palette.  
-
-### Release decades
+## Release decades
 
 First, let's define a palette for the release decades, to use in our first plot. Here I'm starting from beautifully horror [sleepover](https://www.color-hex.com/color-palette/58166) palette by [Bluetris](https://www.color-hex.com/member/bluetris). The original palette has 5 colors. Let's interpolate to at least 8, to cover e.g. the release decades (50s-2020s) of the data-base.
 
@@ -84,7 +59,7 @@ palette_decades <- colorRampPalette(c("#162e2e", "#362e2e", "#562e2e", "#762e2e"
 show_col(palette_decades)
 ```
 
-### Sentiment 
+## Sentiment 
 
 For our second plot, we can define a different color for each sentiment to plot. We're going to use the "nrc" lexicon, which has 10 sentiments, of which we will use 8 (we won't use the general "negative" and "positive"). Even here I start from another beautiful palette by Bluetris, this time the [too bad](https://www.color-hex.com/color-palette/58926), to which I added other three colors from [Coolors](https://coolors.co/) to get to 8:
 ```{r}
@@ -133,14 +108,36 @@ top_plot <- main_df %>%
 
 ## Ploting
 
+Let's define some settings for the plot:
+```{r}
+
+# Add some horror fonts to use in plots:
+sysfonts::font.add(family = "Blackwood Castle", regular = "Blackwood Castle.ttf")
+
+# Size of plot text:
+title_size <- 70
+axis_title_size <- 40
+axis_label_size <- 30
+#legend_title_size <- 30
+#legend_text_size <- 12
+#strip_size <- 24  # text size for facet labels
+
+# Size of output images:
+figure_width <- 20
+figure_height <- 12
+figure_unit <- "in"
+figure_dpi <- 300
+
+```
+
 Now we can plot the data:
-```{r, fig.width=20, fig.height=14}
+```{r, fig.width=20, fig.height=12}
 top_plot %>% mutate(title = factor(title, levels = unique(title)),  # prevent movies to be arranged by title
              release_decade = factor(release_decade, levels = unique(release_decade))) %>%  # factorize release decade to arrange it afterward
   ggplot(aes(x = fct_rev(release_decade), y = vote_average)) +  # use "fct_rev" to organize decade in ascending order
   geom_col(fill = palette_decades) +
-  geom_text(aes(y = 0.2, label = title), hjust = 0, color = "white", family = "Blackwood Castle", size = axis_title_size/.pt) +  # add movie titles
-  geom_text(aes(label = vote_average), hjust = 1.7, color = "white", family = "Blackwood Castle", size = axis_title_size/.pt) +  # add rating
+  geom_text(aes(y = 0.2, label = title), hjust = 0, color = "white", family = "Blackwood Castle", size = axis_label_size/.pt) +  # add movie titles
+  geom_text(aes(label = vote_average), hjust = 1.7, color = "white", family = "Blackwood Castle", size = axis_label_size/.pt) +  # add rating
   scale_y_discrete(expand = c(0, 0.05)) +  # reduce space between decade labels and bars
   coord_flip() +
   labs(title = "Highest Rated Horror Movie per Decade",
@@ -170,6 +167,8 @@ ggsave(file = "img/top-movie-by-decade.png", dpi = figure_dpi, width = figure_wi
 # Sentiment Analysis
 
 Let's now do some sentiment analysis on the movie titles. We're going to use the **"nrc"** lexicon, which categorizes words into ten positive and negative emotions. Of these ten, we're going to use 8, since the other two are general "positive" and "negative", and I feel they wouldn't be too informative.
+
+**HT** to [ekholme](https://github.com/ekholme/TidyTuesday/tree/master/43%20-%20horror%20movies) for the inspiration for this plot!
 
 ## Tokenization
 
@@ -223,34 +222,69 @@ sentiment_plot <- sentiment_by_year_df %>%
   filter(release_year >= 2000)
 ```
 
-First, we want factorize the "sentiment" variable in our df, and order the levels to match the palette chosen for this plot (this is totally arbitrary, I know):
+First, we want factorize the "sentiment" variable in our df, and order the levels to match the palette chosen for this plot (this is totally arbitrary, I know).
+Let's also convert the levels to Title Case for a nicer look in the plot:
 ```{r}
 sentiment_plot <- sentiment_plot %>% 
-  mutate(sentiment = factor(sentiment, levels = c("disgust", "sadness", "anger", "fear", "surprise", "anticipation", "trust", "joy")))
+  mutate(sentiment = factor(str_to_title(sentiment), levels = c("Disgust", "Sadness", "Anger", "Fear", "Surprise", "Anticipation", "Trust", "Joy")))
+```
+
+Let's define here as well some settings for the plot:
+```{r}
+
+# Add some horror fonts to use in plots:
+sysfonts::font_add(family = "The Truth Will Out", regular = "truthwillout.ttf")
+
+# Size of plot text:
+title_size <- 70
+axis_title_size <- 40
+axis_label_size <- 30
+#legend_title_size <- 30
+#legend_text_size <- 12
+#strip_size <- 24  # text size for facet labels
+
+# Size of output images:
+figure_width <- 20
+figure_height <- 12
+figure_unit <- "in"
+figure_dpi <- 300
+
 ```
 
 Let's now create the plot
-```{r, fig.width=20, fig.height=14}
+```{r, fig.width=20, fig.height=12}
 sentiment_plot %>% 
   ggplot(aes(x = release_year, y = sentiment_count_norm, color = sentiment)) +
-  geom_line(size = 3) + 
-  scale_color_manual(values = palette_sentiment) + 
+  geom_line(size = 2) + 
   labs(title = "Sentiments Elicited by Horror Movie Titles",
        subtitle = "Data from themoviedb.org",
        x = "Year",
        y = "Percentage of Titles") +
+  scale_x_continuous(breaks = seq(2000, 2022, by = 2), labels = seq(2000, 2022, by = 2), expand = c(0, 0)) +
+  scale_color_manual(values = palette_sentiment, guide = guide_legend(nrow = 1)) +  # color palette, and make legend on one row
   theme_minimal() +
   theme(
-    plot.title = element_text(size = title_size, family = "Blackwood Castle"),
-    plot.subtitle = element_text(size = axis_title_size, family = "Blackwood Castle"),
-    axis.title = element_text(size = axis_title_size, family = "Blackwood Castle"),
-    #axis.title.y = element_blank(),
-    #axis.text.x = element_blank(),
-    axis.text = element_text(size = axis_label_size, family = "Blackwood Castle", color = "black"),
-    panel.grid.major = element_blank(),
-    #panel.grid.minor = element_blank(),
-    plot.margin = margin(20, 20, 10, 10)  # adjust margins of plotting area
+    plot.title = element_text(size = title_size, family = "The Truth Will Out"),
+    plot.subtitle = element_text(size = axis_title_size, family = "The Truth Will Out", margin = margin(b = 1, unit = "cm")),  # add space below subtitle
+    axis.title = element_text(size = axis_title_size, family = "The Truth Will Out"),
+    axis.title.x = element_text(margin = margin(t = 0.5, unit = "cm")),  # add space between x-axis labels and title
+    axis.title.y = element_text(margin = margin(r = 0.5, unit = "cm")),  # same for y-axis
+    axis.text = element_text(size = axis_label_size, family = "The Truth Will Out"),
+    axis.text.x = element_text(margin = margin(t = 0.5, unit = "cm")),  # add space between x-axis and labels
+    axis.text.y = element_text(margin = margin(r = 0.5, unit = "cm")),  # same for y-axis
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = axis_label_size, family = "The Truth Will Out", 
+                               margin = margin(r = 1, unit = "cm"), vjust = 1.5),  # increase spacing between legend keys, and align vertically
+    legend.key.width = unit(1, "cm"),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(20, 40, 10, 10)  # adjust margins of plotting area
   )
 
 showtext_auto(FALSE)
+```
+
+And let's save this plot too:
+```{r}
+ggsave(file = "img/sentiment-movie-titles.png", dpi = figure_dpi, width = figure_width, height = figure_height, units = figure_unit, bg = "white")
 ```
