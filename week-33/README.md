@@ -2,7 +2,7 @@
 
 [Tidytuesday's Week 33](https://github.com/rfordatascience/tidytuesday/tree/master/data/2022/2022-08-16) is about [Open-Source Psychometric Project](https://openpsychometrics.org/), courtesy of [Tanya Shapiro](https://twitter.com/tanya_shapiro/status/1558936093390774272?s=20&t=tI4nccuwEG4SjWd3H1Suew).
 
-The datasets contain psychometrics about characters from 100 fictional universes. There are three datasets:
+There are three datasets containing psychometrics about characters from 100 fictional universes:
 
 **Characters**
 
