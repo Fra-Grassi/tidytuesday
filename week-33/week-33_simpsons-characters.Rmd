@@ -1,0 +1,278 @@
+---
+title: "week-33_simpson-characters"
+author: "Francesco Grassi"
+date: "2022-10-26"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    fig_retina: 1
+---
+
+<style type="text/css">
+.main-container {
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE,
+                      out.width="100%",
+                      fig.showtext = TRUE)  # to use "showtext" in R Markdown
+suppressPackageStartupMessages(library(tidyverse))
+options(dplyr.summarise.inform = FALSE)
+
+```
+
+# Aim
+
+Create a radar chart describing the personality traits of **The Simpsons character**.  
+To build the radar chart, I'll use the approach by [Tanya Shapiro](https://rpubs.com/tshapiro/super-radar-plots). This is more of a **circular bar plot**. However, after experimenting a bit, I find this approach the most flexible (and also more visually pleasant) than other tidyverse solutions as the "ggradar" package, or the "ggRadar" function from the "ggiraphExtra" package. (Worth noticing Tanya also presents another approach for their [Westworld characters chart](https://github.com/tashapiro/tanya-data-viz/tree/main/westworld) used right for this week's tidytuesday).
+
+# Libraries and fonts
+```{r, message=FALSE}
+
+# install.packages("geomtextpath")
+
+library(tidytuesdayR)
+library(tidyverse)
+library(stringr)
+library(ggimage)
+library(geomtextpath)
+library(showtext)
+library(scales)
+library(ggsci)  # contains the "springfield" palette
+#library(tidytext)
+
+
+```
+
+# Load data
+
+Load data from week 42:
+```{r, message=FALSE}
+
+# tuesdata <- tidytuesdayR::tt_load(2022, week = 33)  # Load datasets
+# characters <- tuesdata$characters
+# psych_stats <- tuesdata$psych_stats
+# myers_briggs <- tuesdata$myers_briggs
+# write_csv(characters, file = "data/characters.csv")
+# write_csv(psych_stats, file = "data/psych_stats.csv")
+# write_csv(myers_briggs, file = "data/myers_briggs.csv")
+characters <- read_csv(file = "data/characters.csv")
+psych_stats <- read_csv(file = "data/psych_stats.csv")
+myers_briggs <- read_csv(file = "data/myers_briggs.csv")
+
+```
+
+# Prepare data
+
+For the moment, we'll focus on the personality traits contained in the "psych_stats" data.frame. There are 400 personality trait questions.  
+Here I'm picking five traits to plot:
+
++ emotional/logical
++ extrovert/introvert
++ dunce/genius
++ funny/humorless
++ cruel/kind
+
+So, let's filter the "psych_stats" data.frame, selecting the 15 characters from The Simpsons, and only the personality traits we are interested on:
+```{r}
+
+pers_questions <- c("emotional/logical", 
+                    "extrovert/introvert", 
+                    "dunce/genius", 
+                    "funny/humorless", 
+                    "cruel/kind")
+
+simpsons_df <- psych_stats %>% 
+  filter(uni_name == "The Simpsons") %>% 
+  filter(question %in% pers_questions)
+  
+```
+
+## Refine personality trait rating
+
+Now, we have to deal with how the rating for the selected personality trait is coded. The rate in the variable "avg_rating" is on a scale from 0 to 100. *However*, this rating is **relative** to the pole of the scale that the character is closest to, which is defined by the variable "personality"! So to make the ratings comparable between characters, we might define one anchor pole for each question, and reference all characters to that. E.g., if we pick "genius" as anchor for the question "dunce/genius", for a character with "personality" "dunce" and an "avg_rating" of 80, we'll turn the rating to 20 (100-20).
+
+We'll use the following anchors:
+
++ emotional/logical -> logical
++ extrovert/introvert -> extrovert
++ dunce/genius -> genius
++ funny/humorless -> funny
++ kind/cruel -> kind
+
+And then use the anchors to reference the ratings:
+```{r}
+simpsons_df <- simpsons_df %>% 
+  mutate(anchor_trait = factor(question)) %>%  # make a copy of the "question" variable
+  mutate(anchor_trait = fct_recode(anchor_trait,  # rename the levels with the anchor poles
+                                   "logical" = "emotional/logical", 
+                                   "extrovert" = "extrovert/introvert", 
+                                   "genius" = "dunce/genius", 
+                                   "funny" = "funny/humorless", 
+                                   "kind" = "cruel/kind")) %>% 
+  mutate(anchor_rating = case_when(  # use the anchor and the original "personality" to reference the rating
+    anchor_trait != personality ~ 100 - avg_rating,
+    TRUE ~ avg_rating
+  )) %>% 
+  select(char_name, question, anchor_trait, anchor_rating) %>% 
+  rename(personality = anchor_trait,
+         avg_rating = anchor_rating)
+```
+
+## Preparing character pictures
+
+It would be nice to have a picture of each character at the center of their respective radar chart. The "characters" data.frame has a "image_link" column with links to images for all the characters. However, at least for The Simpsons ones, they are not very consistent in terms of size of the character and background. Therefore I prepared custom pictures, all being a round image centered on the face of the characters, with white background. These pics are stored in "/assets/simpsons/". Let's therefore add a column to our data.frame, with local links pointing at the pics:
+```{r}
+simpsons_df <- simpsons_df %>% 
+  mutate(img_link = paste0("assets/simpsons/",
+                           str_replace(char_name, "[.]", ""),  # account for the dot in "Mr. Burns" not being in the file name
+                           ".png"))
+```
+
+# Plotting
+
+We want to create a plot displaying a radar chart for each character. Let's turn the character names upper case, break them in two lines, and organize them in the order we'd like them to be showed in the plot:
+```{r}
+simpsons_df <- simpsons_df %>% 
+  mutate(char_name = str_replace(toupper(char_name), " ", "\n")) %>% 
+  mutate(char_name = factor(char_name, 
+                            levels = c("HOMER\nSIMPSON", "MARGE\nSIMPSON", "BART\nSIMPSON", "LISA\nSIMPSON", 
+                                       "NED\nFLANDERS", "MR.\nBURNS", "WAYLON\nSMITHERS", "MILHOUSE\nVAN HOUTEN",
+                                       "BARNEY\nGUMBLE", "MOE\nSZYSLAK",  "KRUSTY\nTHE CLOWN", "APU\nNAHASAPEEMAPETILON", 
+                                       "PRINCIPAL\nSKINNER", "NELSON\nMUNTZ", "EDNA\nKRABAPPEL")))
+```
+
+**NOTE**: at the moment, we plot only the 12 characters (excluding Principal Skinner, Nelson Muntz, and Edna Krabappel). This is only to make a nicer plot out of the data, with 12 characters organized in a 3X4 grid, giving enough space to each chart.
+
+## Plot settings
+
+This kind of plot requires quite some tricks. We want to plot a bar chart, with each bar representing a personality trait. We use polar coordinates to wrap the bars around a circle.  
+As Tanya explains, in order to make the plot custom, we'll start with a **void** canvas, and add the desired curved grid lines as segments using **geom_segment**. In the same way, we'll add labels for the personality traits in a circular fashion by using **geomtextpath**.  
+
+So, let's create a custom data.frame with the coordinates of our curved grid lines. We want the chart to show grid lines at each quartile of the personality rating:
+```{r}
+segments <- data.frame(
+  x1=rep(0.5, 5),
+  x2=rep(4.5, 5), 
+  y1=c(0, 25, 50, 75, 100), 
+  y2=c(0, 25, 50, 75, 100)
+)
+```
+
+Similarly, we create another data.frame containing the coordinates of the of the y-axis labels:
+```{r}
+labels <- data.frame(
+  y = c(25, 50, 75, 100),
+  x = rep(0.25, 4)
+)
+```
+
+We also want the chart to have a "hole" at the center, in order to accommodate the character pic. To do so, we'll extend the y-axis limits outside the 0-100 range. This will move the base of each bar away from the center. By extending the limit outside the 100 value, we'll also add some upper padding between the bars and the personality trait label.
+
+Let's also define some colors for the plot (taken from the "pal_simpsons/springfield" palette from **ggsci**) as well as text and plot sizes:
+```{r}
+col_bkg <- "#9AB7EAFF"  # "Simpsons blue" for plot background
+col_main_text <-"#FED439FF"  # "Simpsons yellow" for plot main text
+col_title_text <- "white"  # Title and subtitle color
+col_grid_lines <- "white"
+col_personality <- c("#8A9197FF", "#D2AF81FF", "#FD7446FF", "#46732EFF", "#FD8CC1FF")  # colors for personality traits
+
+# Add fonts to use in plot:
+sysfonts::font_add(family = "Simpsonfont", regular = "Simpsonfont DEMO.otf")  # for title
+font_add_google("PT Sans")  # for axis title and labels
+
+showtext_auto()
+
+# Size of plot text:
+axis_title_size <- 78
+axis_label_size <- 48
+#legend_title_size <- 30
+#legend_text_size <- 12
+#strip_size <- 24  # text size for facet labels
+
+# Size of output images:
+# figure_width <- 18
+# figure_height <- 20
+figure_width <- 20
+figure_height <- 19
+figure_unit <- "in"
+figure_dpi <- 300
+
+```
+
+## Create plot
+
+(Here I'm adding the various layers of the plot in a somehow different order than I usually do. I'm trying to follow the mental "steps" to build the plot according to Tanya's procedure)
+```{r}
+
+simpsons_df %>% 
+  mutate(avg_rating = as.integer(round(avg_rating))) %>%  # provide discrete scale
+  mutate(personality = fct_relevel(personality, "extrovert", "kind", "logical", "genius", "funny")) %>%  # re-level traits to fit better around circle
+  filter(!(char_name %in% c("PRINCIPAL\nSKINNER", "NELSON\nMUNTZ", "EDNA\nKRABAPPEL"))) %>%  # select only first 12 characters
+  ggplot(aes(x = personality, y = avg_rating, fill = personality)) +
+  theme_void() +  # remove theme elements
+  coord_curvedpolar() +  # use polar coordinates
+  geom_textpath(inherit.aes=FALSE,  # add curved labels for personality traits around chart 
+               mapping=aes(x = personality, 
+                           label = personality,
+                           y=125),  # add some padding between chart limit and labels
+               family = "PT Sans",
+               fontface = "bold",
+               size = axis_label_size/.pt,
+               spacing = -200,
+               textcolour = col_main_text,
+               vjust = 0.6,
+               upright=TRUE, 
+               text_only=TRUE)+
+  geom_image(aes(x = 0, y = -70, image = img_link), size = 0.285 ) +
+  geom_segment(inherit.aes=FALSE,  # add custom grid lines
+               data = segments,
+               mapping = aes(x = x1, xend = x2, y = y1, yend = y2), 
+               linewidth = 0.35,
+               color = col_grid_lines) +
+  geom_col(width = 0.8) +  # add traits rating
+  geom_textsegment(inherit.aes=FALSE,  # add labels for the traits scale
+                   data=labels,
+                   mapping=aes(x = 4.5, xend = 5.5, y = y, yend = y, label = y),
+                   family = "PT Sans",
+                   fontface = "bold",
+                   size = axis_label_size/.pt,
+                   spacing = -350,
+                   textcolour = col_main_text,  # color of the labels
+                   color = col_grid_lines,  # color of the added lines
+                   linewidth = 0.35,
+                   text_only = FALSE) +  # this will add a section of lines ON TOP of the columns 
+  labs(title = "THE SIMPSONS", 
+       subtitle = "Personality Traits by Character",
+       caption = "Data from the Open-Source Psychometrics Project") +
+  scale_y_continuous(limits=c(-70, 125)) +
+  scale_fill_manual(values = col_personality) +
+  facet_wrap(~ char_name, nrow = 3) +
+  #facet_wrap(~ char_name, nrow = 4) +
+  theme(
+    plot.margin=unit(c(0.3, 0, 0.3, 0), "in"),
+    text = element_text(colour = col_main_text),
+    plot.background = element_rect(fill = col_bkg, color = NA),
+    plot.title = element_text(size = 230, family = "Simpsonfont", hjust = 0.5, margin = unit(c(0, 0, 0.2, 0), "in")),
+    plot.subtitle = element_text(size = 120, family = "Simpsonfont", hjust = 0.5, margin = unit(c(0, 0, 0.5, 0), "in")),
+    plot.caption = element_text(size = axis_label_size, family = "Simpsonfont"), 
+    axis.text=element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    panel.spacing = unit(0.4, "in"),  # increase distance between charts
+    strip.text=element_text(family = "Simpsonfont", 
+                            size = axis_title_size,
+                            lineheight = 0.35,
+                            margin = unit(c(0, 0, -0.1, 0), "in")),  # move chart labels closer to charts
+    strip.clip = "off",  # avoid chart labels to be trimmed by chart margins
+    legend.position = "none"
+  )
+  
+ggsave("img/simpsons-personality.png", width = figure_width, height = figure_height, units = figure_unit)
+```
