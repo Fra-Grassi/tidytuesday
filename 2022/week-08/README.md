@@ -19,8 +19,8 @@ This is an exercise on:
 
 1. **Parallel coordinates plots**:
 
-...For this, I'll try to track the **Civil Liberties** and **Political Rights** indexes in Europe across the years
+    For this, I'll try to track the **Civil Liberties** and **Political Rights** indexes in Europe across the years
 
 2. **Maps**:
 
-...Never worked with geographical data. For this, I'll try to plot the same two indexes on a world map in a given year.
+    Never worked with geographical data. For this, I'll try to plot the same two indexes on a world map in a given year.
