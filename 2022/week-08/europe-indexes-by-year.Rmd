@@ -1,0 +1,35 @@
+---
+title: "europe-indexes-by-year"
+author: "Francesco Grassi"
+date: "2023-01-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+suppressPackageStartupMessages(library(tidyverse))
+options(dplyr.summarise.inform = FALSE)
+```
+
+# Aim
+
+This is an exercise to learn about **parallel coordinates plots**.  
+Here I'll create two plots, indicating the variation of **Civil Liberties** and **Political Rights** in **European countries** across the years.
+
+# Libraries
+
+```{r}
+library(tidyverse)
+```
+
+# Load and select data
+
+Load raw data and select European countries:
+```{r, message=FALSE}
+
+raw_df <- read_csv(file = "data/raw-data.csv")
+europe_df <- raw_df %>% 
+  filter(Region_Name == "Europe")
+
+```
+
