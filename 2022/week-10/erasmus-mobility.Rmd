@@ -1,0 +1,175 @@
+---
+title: "erasmus-mobility"
+author: "Francesco Grassi"
+date: "2023-01-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+suppressPackageStartupMessages(library(tidyverse))
+options(dplyr.summarise.inform = FALSE)
+```
+
+# Aim
+
+Create an **alluvial plot** displaying the destinations of the top 5 origin countries in the Erasmus program for the year 2019.
+
+# Libraries
+```{r}
+
+# install.packages("ggalluvial")
+
+library(tidyverse)
+library(ggalluvial)
+
+```
+
+# Load raw data
+
+Load raw data from the tidytuesday project:
+```{r, message = FALSE}
+# tuesdata <- tidytuesdayR::tt_load(2022, week = 10)
+# erasmus_raw <- tuesdata$erasmus
+# write_csv(erasmus_raw, file = "2022/week-10/data/raw_data.csv")
+erasmus_raw <- read_csv(file = "data/raw_data.csv")
+```
+
+# Prepare data 
+
+## Get data of interest
+
+First of all, let's filter data for the year 2019 (as the year in which the mobility *started*).  
+Each row of the dataset indicates a "batch" of students moving in a defined time window. The number of students for each batch is stored in the variable "participants".  
+Therefore, let's then sum up this number for each combination of origin and destination country:
+```{r}
+main_df <- erasmus_raw %>% 
+  filter(str_detect(mobility_start_month, "2019")) %>%
+  select(sending_country_code, receiving_country_code, participants) %>% 
+  group_by(sending_country_code, receiving_country_code) %>% 
+  summarize(count = sum(participants))
+```
+
+## Select international Erasmus
+
+After a quick look at the data, it seems (unsurprisingly) that most of the movements are made **within** countries. Honestly I find this information not very interesting. I'd like instead to focus only on **international movements**. Therefore, let's further filter only entries where the origin and destination country are not the same:
+```{r}
+main_df <- main_df %>% 
+  filter(sending_country_code != receiving_country_code)
+```
+
+## Select top origin countries
+
+Now let's simply select the top origin countries:
+```{r}
+
+# Get top five origin countries:
+top_coutries <- main_df %>% 
+  group_by(sending_country_code) %>% 
+  summarize(tot = sum(count)) %>% 
+  slice_max(tot, n = 5) %>% 
+  pull(sending_country_code)  # extract country code as vector
+
+# Count movements to destination countries:
+main_df <- main_df %>% 
+  filter(sending_country_code %in% top_coutries)
+
+```
+
+## Add country names
+
+Finally, let's take care of the (extremely tedious) job of giving each country the proper name. This will make the plot prettier, instead of using the abbreviations from the data-frame. We have to repeat this step for both sending and receiving country:
+```{r}
+main_df <- main_df %>% 
+  mutate(orig_country_name = case_when(sending_country_code == "DE" ~ "Germany",
+                                       sending_country_code == "ES" ~ "Spain",
+                                       sending_country_code == "IT" ~ "Italy",
+                                       sending_country_code == "PL" ~ "Poland",
+                                       sending_country_code == "UK" ~ "United\nKingdom"),  # to break the name in the plot
+         dest_country_name = case_when(receiving_country_code == "AT" ~ "Austria",
+                                       receiving_country_code == "BE" ~ "Belgium",
+                                       receiving_country_code == "CY" ~ "Cyprus",
+                                       receiving_country_code == "DK" ~ "Denmark",
+                                       receiving_country_code == "EE" ~ "Estonia",
+                                       receiving_country_code == "EL" ~ "Greece",
+                                       receiving_country_code == "ES" ~ "Spain",
+                                       receiving_country_code == "FR" ~ "France",
+                                       receiving_country_code == "IE" ~ "Ireland",
+                                       receiving_country_code == "IT" ~ "Italy",
+                                       receiving_country_code == "LT" ~ "Lithuania",
+                                       receiving_country_code == "MT" ~ "Malta",
+                                       receiving_country_code == "NL" ~ "Netherlands",
+                                       receiving_country_code == "PL" ~ "Poland",
+                                       receiving_country_code == "SE" ~ "Sweden",
+                                       receiving_country_code == "UK" ~ "United\nKingdom",  # to break the name in the plot
+                                       receiving_country_code == "DE" ~ "Germany",
+                                       receiving_country_code == "LU" ~ "Luxembourg",
+                                       receiving_country_code == "LV" ~ "Latvia",
+                                       receiving_country_code == "PT" ~ "Portugal",
+                                       receiving_country_code == "SI" ~ "Slovenia",
+                                       receiving_country_code == "TR" ~ "Turkey",
+                                       receiving_country_code == "BG" ~ "Bulgaria",
+                                       receiving_country_code == "FI" ~ "Finland",
+                                       receiving_country_code == "RO" ~ "Romania",
+                                       receiving_country_code == "CZ" ~ "Czechia",
+                                       receiving_country_code == "NO" ~ "Norway"))
+```
+
+# Plotting
+
+Finally we can create our alluvial plot.  
+The plot will show the origin countries on the left, and the destination countries on the right. We want to add labels for the country names. However this is not feasible for **all** destination countries, since some will have a very small height in the right column. We can make use of the "min.y" parameter in the "stat_stratum()" to exclude labels under a certain height.
+
+First of all, let's define a color palette. I'd like to use one color for each origin country's flag.  
+Also, define colors for the plot text.
+```{r}
+
+# Colors for countries of origin:
+col_ori <- c("#000000",  # Germany
+             "#008C45",  # Italy
+             "#DC143C",  # Poland
+             "#FABD00",  # Spain
+             "#012169")  # UK
+             
+# Plot text color:
+col_main_text = "#7C8FFF"  # use the Europe flag blue for column background (slightly lighter than the original)
+```
+
+And now let's create the plot:
+```{r, fig.width=16, fig.height=10, warning=FALSE}
+main_df %>% 
+  ggplot(aes(axis1 = orig_country_name,  # left column
+             axis2 = dest_country_name,  # right column
+             y = count)) +
+  geom_alluvium(aes(fill = orig_country_name),) +  # add the "flux" lines
+  geom_stratum(  # add the left and right columns
+    width = 0.2,  # "width" as proportion of the distance between the two columns
+    fill = col_main_text) +  # use the Europe flag blue for column background (slightly lighter than the original)
+  geom_text(stat = "stratum",  # use the values in "geom_stratum"
+            aes(label = after_stat(stratum)),  # add labels after calculating stratum
+            min.y = 40,  # play with this to set which labels to display on right column
+            size = 16/.pt,
+            fontface = "bold",
+            color = "#FFDD00") +  # use Europe flag yellow for column text
+  scale_x_discrete(limits = c("Origin Country", "Destination Country"), expand = c(0, 0)) +  # trim "geom_alluvium" part outside columns
+  scale_fill_manual(values = col_ori) + 
+  labs(title = "Destinations from the Top Five Origin Countries in the Erasmus Program",
+       subtitle = "Data from Data.Europa",
+       y = "Participants") + 
+  theme_void() +
+  theme(
+    plot.margin = margin(c(0.1, 0.3, 0, 0.2), unit = "in"),
+    text = element_text(color = col_main_text),
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 15, margin = margin(c(0.1, 0, -0.2, 0), unit = "in")),
+    axis.title.y = element_text(size = 20, angle = 90, margin = margin(c(0, 0.2, 0, 0), unit = "in")),
+    axis.text.x = element_text(size = 15, margin = margin(c(-0.2, 0, 0.2, 0), unit = "in")),
+    legend.position = "none"
+  )
+```
+
+Finally, we can also save the plot:
+```{r}
+ggsave("img/erasmus-mobility.png", width = 15, height = 10, units = "in", dpi = 300, bg = "white")
+```
+
