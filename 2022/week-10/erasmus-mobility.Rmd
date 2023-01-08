@@ -112,7 +112,9 @@ main_df <- main_df %>%
                                        receiving_country_code == "FI" ~ "Finland",
                                        receiving_country_code == "RO" ~ "Romania",
                                        receiving_country_code == "CZ" ~ "Czechia",
-                                       receiving_country_code == "NO" ~ "Norway"))
+                                       receiving_country_code == "NO" ~ "Norway")) %>% 
+  mutate(orig_country_name = factor(orig_country_name,   # Factorize to have them in order in the plot
+                                       levels = c("Germany", "United\nKingdom", "Poland", "Italy", "Spain")))
 ```
 
 # Plotting
@@ -126,10 +128,11 @@ Also, define colors for the plot text.
 
 # Colors for countries of origin:
 col_ori <- c("#000000",  # Germany
-             "#008C45",  # Italy
+             "#012169",  # UK
              "#DC143C",  # Poland
-             "#FABD00",  # Spain
-             "#012169")  # UK
+             "#008C45",  # Italy
+             "#FABD00")  # Spain
+             
              
 # Plot text color:
 col_main_text = "#7C8FFF"  # use the Europe flag blue for column background (slightly lighter than the original)
@@ -152,8 +155,9 @@ main_df %>%
             fontface = "bold",
             color = "#FFDD00") +  # use Europe flag yellow for column text
   scale_x_discrete(limits = c("Origin Country", "Destination Country"), expand = c(0, 0)) +  # trim "geom_alluvium" part outside columns
+  scale_y_continuous(breaks = c(0, seq(100, 1100, by = 100))) +
   scale_fill_manual(values = col_ori) + 
-  labs(title = "Destinations from the Top Five Origin Countries in the Erasmus Program",
+  labs(title = "Destinations from the Top Five Origin Countries\nin the Erasmus Program in 2019",
        subtitle = "Data from Data.Europa",
        y = "Participants") + 
   theme_void() +
@@ -164,6 +168,9 @@ main_df %>%
     plot.subtitle = element_text(size = 15, margin = margin(c(0.1, 0, -0.2, 0), unit = "in")),
     axis.title.y = element_text(size = 20, angle = 90, margin = margin(c(0, 0.2, 0, 0), unit = "in")),
     axis.text.x = element_text(size = 15, margin = margin(c(-0.2, 0, 0.2, 0), unit = "in")),
+    axis.text.y = element_text(size = 15, margin = margin(c(0, 0.1, 0, 0), unit = "in")),
+    axis.ticks.y = element_line(colour = "black", linewidth = 0.7, lineend = "butt"),
+    axis.ticks.length.y = unit(0.1, "in"),
     legend.position = "none"
   )
 ```
