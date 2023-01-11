@@ -1,0 +1,140 @@
+---
+title: "steps"
+author: "Francesco Grassi"
+date: "2023-01-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+suppressPackageStartupMessages(library(tidyverse))
+options(dplyr.summarise.inform = FALSE)
+```
+
+# Aim
+
+Create a radial plot indicating the number of steps per day in 2022. A threshold of 10000 steps a day is used to color-code the values.  
+
+**NOTE** the original idea for this plot comes from [RalitzaSoultanova](https://github.com/RalitzaSoultanova/TidyTuesday2023/tree/main/W1).  
+While I didn't look at their code, I saw their beautiful figure on Twitter and decided to try to replicate it.
+
+# Libraries
+```{r}
+library(tidyverse)
+library(XML)  # to read in and parse data
+```
+
+# Load raw data
+
+Data comes from my iPhone and Apple Watch. Data is exported from the Health app as an .xml file (side note: for the entire 2022 I had used the same iPhone 11 Pro. I bought an Apple Watch Series 8 on Dec. 20th, so it is quite a new addition as measuring device in this dataset).  
+Since this file contains tons of health and location related data, for obvious privacy reasons I'm not adding it in the repository.
+
+**NOTE**: This is basically my first time working with .xml files so I don't quite understand *exactly* how this import works. Will have to return to these steps in the future.
+```{r, message = FALSE}
+raw_export <- xmlParse("data/export.xml")  # read the file exported from the Health app
+raw_df <- XML:::xmlAttrsToDataFrame(raw_export["//Record"])  # turn the actual record into a df
+```
+
+# Prepare data 
+
+## Extract number of steps
+
+This raw df contains a big variety of data (from hearth rate to burned kcal). What we are interested in is the number of steps measured by either my iPhone or my Apple Watch. The type of data is stored under the column "type", and steps are indicated as "HKQuantityTypeIdentifierStepCount", in count units.  
+We also want to filter data for the year 2022. Finally, of the many columns of the df, we're only interested in the type, the starting date of the entry, and it's value.
+```{r}
+main_df <- raw_df %>% 
+  filter(type == "HKQuantityTypeIdentifierStepCount") %>% 
+  mutate(startDate = as.Date(startDate)) %>%  # convert to Date format
+  filter(format(startDate, "%Y") == 2022) %>%  # select for year
+  select(startDate, value) %>% 
+  mutate(value = as.numeric(value))
+```
+
+## Sum steps per day
+
+The df contains many entries per day. What we want to do is to calculate the total number of steps per each day:
+```{r}
+main_df <- main_df %>% 
+  group_by(startDate) %>% 
+  summarise(value = sum(value))
+```
+
+## Add threshold info
+
+Now, let's add a new variable indicating whether in a given day I managed to walk more or less than 10 thousand steps. We'll use 1 in case I managed, and 0 in case I didn't:
+```{r}
+main_df <- main_df %>% 
+  mutate(thresh = case_when(
+    value >= 10000 ~ 1,
+    TRUE ~ 0
+  )) %>% 
+  mutate(thresh = factor(thresh, levels = c(1, 0)))
+```
+
+## Count steps
+
+We want our plot to show also the total number of steps and the daily average, so let's calculate them:
+```{r}
+
+# total number of steps:
+total_steps <- main_df %>% 
+  summarise(sum = sum(value)) %>% 
+  pull(sum)
+
+# average number of steps:
+avg_steps <- round(total_steps/365)
+
+```
+
+## Extract distance traveled
+
+We also want to indicate the total distance traveled in 2022. This data is stored under "HKQuantityTypeIdentifierDistanceWalkingRunning" (in km). So let's also select that, and store the total distance in a variable:
+```{r}
+total_distance <- raw_df %>% 
+  filter(type == "HKQuantityTypeIdentifierDistanceWalkingRunning")  %>% 
+  filter(format(as.Date(startDate), "%Y") == 2022) %>% 
+  select(value) %>% 
+  mutate(value = as.numeric(value)) %>%
+  summarize(sum = sum(value)) %>% 
+  pull(sum)
+```
+
+# Plotting
+
+We want to generate a radial plot indicating the number of steps per day. To do so we are going to create a bar plot with polar coordinates.  
+We also want to color the bars based on whether I walked more or less than 10 thousands steps per day.  
+An horizontal line (which will turn into a circle in polar coords) will indicate this threshold.  
+Finally we also want to add vertical lines separating months.
+
+## Palette
+
+Here I'm using a different color palette than RalitzaSoultanova. I'm actually going to use colors from a very nice palette found on [Coolors](https://coolors.co/palette/f4f1de-e07a5f-3d405b-81b29a-f2cc8f):
+```{r}
+
+col_bg <- "#f2cc8f"  # plot background
+col_steps <- c("#81b29a",  # steps above threshold
+               "#e07a5f")  # steps below threshold
+col_elem <- "#3d405b"  # for plot lines and text
+
+```
+
+```{r, fig.width=15, fig.height=15}
+
+main_df %>% 
+  ggplot(aes(x = startDate, y = value, fill = thresh)) +
+  geom_hline(yintercept = 10000, color = col_elem) +  # add threshold line
+  geom_col() +
+  scale_y_continuous(limits = c(0, 35070), expand = c(0, 0)) +
+  scale_fill_manual(values = col_steps) +
+  #coord_polar() +
+  theme_minimal() +
+  theme(
+    axis.title = element_blank(),
+    axis.text = element_blank(),
+    legend.position = "bottom",
+    
+  )
+
+```
+
+
