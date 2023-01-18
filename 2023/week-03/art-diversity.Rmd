@@ -1,0 +1,152 @@
+---
+title: "art-diversity"
+author: "Francesco Grassi"
+date: "2023-01-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+suppressPackageStartupMessages(library(tidyverse))
+options(dplyr.summarise.inform = FALSE)
+```
+
+# Aim
+
+Visualize representation of genders and races in the years across publications of Janson’s History of Art and Gardner’s Art Through the Ages.
+
+This is also an exercise into **waffle charts**. We'll use them to display number of entries in the data-set per gender and race.
+
+# Libraries
+```{r}
+#library(tidytuesdayR)
+library(tidyverse)
+#remotes::install_github("hrbrmstr/waffle")
+library(waffle)
+# library(geomtextpath)
+# library(scales)
+```
+
+# Load TidyTuesday's data
+
+```{r}
+# tuesdata <- tt_load(2023, week = 3)
+# main_df <- tuesdata$artists
+# write_csv(main_df, file = "data/raw-data.csv")
+main_df <- read_csv("data/raw-data.csv")
+```
+
+# Prepare data
+
+First, lets' factorize artist's gender and race. In both cases, order levels from by frequency:
+```{r}
+main_df <- main_df %>% 
+  mutate(artist_gender = fct_infreq(artist_gender),
+         artist_race = fct_infreq(artist_race))
+```
+
+Now, we are going to use "geom_waffle()" in order to create the waffle plots. This function requires a variable with a **count** measure, which will be used to define the number of squares to plot. Therefore, let's create two dfs, one summarizing the number of artists per gender per year, and the other the number of artists per race per year:
+```{r}
+df_gender <- main_df %>% 
+  group_by(year, artist_gender) %>% 
+  summarise(n = n())
+
+df_race <- main_df %>% 
+  group_by(year, artist_race) %>% 
+  summarise(n = n())
+```
+
+Level names for artist race are quite long. Add a new variable which breaks the longer ones in two lines:
+```{r}
+df_race <- df_race %>% 
+  mutate(race_plot = artist_race) %>% 
+  mutate(rece_plot = fct_recode(race_plot, 
+                                "American Indian \\\nAlaska Native" = "American Indian or Alaska Native", 
+                                "Black \\\nAfrican American" = "Black or African American", 
+                                "Native Hawaiian \\\nOther Pacific Islander" = "Native Hawaiian or Other Pacific Islander"))
+```
+
+# Plot
+
+## General settings
+
+Since we are creating different plots, let's define some general settings.  
+(Colors for the palettes are taken by the [Tableau 10 palette](https://www.tableau.com/blog/colors-upgrade-tableau-10-56782)).
+```{r}
+
+text_main <- 16  # main plot text size
+text_title <- 40
+text_axis_title <- 20
+
+col_gender <- c("#EDC948", "#B07AA1", "#BAB0AC")  # palette for gender
+col_race <- c("#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F", "#BAB0AC")  # palette for race
+```
+
+
+## Gender
+
+Let's start with gender. As we said, we want to create a waffle chart, displaying number of artists per year of publication, divided by gender:
+```{r, fig.width=20, fig.height=12}
+df_gender %>% 
+  ggplot(aes(fill = artist_gender, values = n)) +
+  geom_waffle(color = "white", size = .25, n_rows = 10, flip = TRUE) +
+  facet_wrap( ~ year, nrow = 1, strip.position = "bottom") +
+  scale_x_discrete() +
+  scale_y_continuous(limits = c(0, 40),  # keep in mind each row contains 10 values! (see line below)
+                     labels = function(x) x * 10,  # multiply for the same number as "n_rows" in "geom_waffle()" to display correct labels
+                     expand = c(0, 0)) +
+  labs(x = "Year", y = "Count") +
+  scale_fill_manual(values = col_gender) +
+  coord_equal() +
+  theme_minimal() +
+  theme(
+    plot.margin = margin(0, 0.1, 0.1, 0.4, "in"),
+    panel.grid.minor = element_blank(),
+    axis.title = element_text(size = text_axis_title),
+    axis.title.x = element_text(margin = margin(0.1, 0, 0, 0, "in")),
+    axis.title.y = element_text(margin = margin(0, 0.1, 0, 0, "in")),
+    axis.text = element_text(size = text_main),
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    legend.text = element_text(size = text_main),
+    strip.text = element_text(size = text_main)
+    )
+```
+
+# Race
+
+```{r, fig.width=20, fig.height=12}
+df_race %>% 
+  ggplot(aes(fill = race_plot, values = n)) +
+  geom_waffle(color = "white", size = .25, n_rows = 10, flip = TRUE) +
+  facet_wrap( ~ year, nrow = 1, strip.position = "bottom") +
+  scale_x_discrete() +
+  scale_y_continuous(limits = c(0, 40),  # keep in mind each row contains 10 values! (see line below)
+                     labels = function(x) x * 10,  # multiply for the same number as "n_rows" in "geom_waffle()" to display correct labels
+                     expand = c(0, 0)) +
+  labs(x = "Year", y = "Count") +
+  scale_fill_manual(values = col_race, 
+                    labels = c("White",
+                               "Black \\\nAfrican American",
+                               "Asian",
+                               "N/A",
+                               "Native Hawaiian \\\nOther Pacific Islander",
+                               "American Indian \\\nAlaska Native")) +
+  guides(fill = guide_legend(nrow = 1)) +
+  coord_equal() +
+  theme_minimal() +
+  theme(
+    plot.margin = margin(0, 0.1, 0.1, 0.4, "in"),
+    panel.grid.minor = element_blank(),
+    axis.title = element_text(size = text_axis_title),
+    axis.title.x = element_text(margin = margin(0.1, 0, 0, 0, "in")),
+    axis.title.y = element_text(margin = margin(0, 0.1, 0, 0, "in")),
+    axis.text = element_text(size = text_main),
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    legend.text = element_text(size = text_main),
+    legend.key.height = unit(0.2, "in"),
+    legend.key.width = unit(0.4, "in"),
+    strip.text = element_text(size = text_main)
+    )
+```
