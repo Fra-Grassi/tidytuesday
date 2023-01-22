@@ -79,9 +79,11 @@ Since we are creating different plots, let's define some general settings.
 Colors for the palettes are taken by the [scico package by thomasp85](https://github.com/thomasp85/scico), which is an implementation of the amazing colormaps by [Fabio Crameri](https://www.fabiocrameri.ch/colourmaps/).
 ```{r}
 
-text_main <- 16  # main plot text size
+text_main <- 14  # main plot text size
 text_title <- 40
+text_subtitle <- 25
 text_axis_title <- 20
+text_col <-"#003F4C"
 
 ```
 
@@ -99,21 +101,25 @@ plot_gender <- df_gender %>%
                      labels = function(x) x * 5,  # multiply for the same number as "n_rows" in "geom_waffle()" to display correct labels
                      expand = c(0, 0)) +
   labs(x = "Year", y = "Count") +
-  scale_fill_scico_d(palette = "acton", direction = -1) +
+  scale_fill_scico_d(palette = "bamako", direction = -1) +
   coord_equal() +
   theme_minimal() +
   theme(
-    plot.margin = margin(0.2, 0, 0.2, -0.2, "in"),
+    #plot.margin = margin(0.2, 0, 0.2, -0.2, "in"),
     panel.grid.minor = element_blank(),
-    axis.title = element_text(size = text_axis_title),
+    panel.grid = element_line(color = text_col),
+    axis.title = element_text(size = text_axis_title, color = text_col),
     axis.title.x = element_text(margin = margin(0.1, 0, 0, 0, "in")),
     axis.title.y = element_text(margin = margin(0, 0.1, 0, 0, "in")),
-    axis.text = element_text(size = text_main, color = "black"),
+    axis.text = element_text(size = text_main, color = text_col),
     legend.position = "bottom",
     legend.title = element_blank(),
-    legend.text = element_text(size = text_main),
-    strip.text = element_text(size = text_main)
+    legend.text = element_text(size = text_main, color = text_col),
+    legend.margin = margin(0, 0, 1, 0, unit = "in"),
+    strip.text = element_text(size = text_main, color = text_col)
     )
+
+plot_gender
 ```
 
 # Race
@@ -129,41 +135,43 @@ plot_race <- df_race %>%
                      labels = function(x) x * 5,  # multiply for the same number as "n_rows" in "geom_waffle()" to display correct labels
                      expand = c(0, 0)) +
   labs(x = "Year", y = "Count") +
-  scale_fill_scico_d(palette = "acton",
+  scale_fill_scico_d(palette = "bamako",
                      direction = -1) +
   coord_equal() +
   theme_minimal() +
   theme(
-    plot.margin = margin(1, 0, 0.2, -0.2, "in"),
+    #plot.margin = margin(1, 0, 0.2, -0.2, "in"),
     panel.grid.minor = element_blank(),
-    axis.title = element_text(size = text_axis_title),
+    panel.grid = element_line(color = text_col),
+    axis.title = element_text(size = text_axis_title, color = text_col),
     axis.title.x = element_text(margin = margin(0.1, 0, 0, 0, "in")),
     axis.title.y = element_text(margin = margin(0, 0.1, 0, 0, "in")),
-    axis.text = element_text(size = text_main, colour = "black"),
+    axis.text = element_text(size = text_main, color = text_col),
     legend.position = "bottom",
     legend.title = element_blank(),
-    legend.text = element_text(size = text_main),
-    strip.text = element_text(size = text_main)
+    legend.text = element_text(size = text_main, color = text_col),
+    strip.text = element_text(size = text_main, color = text_col)
     )
+
+plot_race
 ```
 
 ## Combine plots
 
 Combine the two plots in one figure:
-```{r, fig.width=17, fig.height=20}
+```{r, fig.width=16, fig.height=20}
 plot_gender + plot_race +
   plot_layout(nrow = 2) +
-  plot_annotation(title = "Test this",
-                  caption = "test caption",
+  plot_annotation(title = "Representation in Art History Texbooks",
+                  subtitle = "Artists published in Gardner's 'Art Through the Ages'\nand Jason's 'History of Art' by Gender and Race",
+                  caption = "Data: Lemus S, Stam H (2022). 'arthistory: Art History Textbook Data'. For: TidyTuesday",
                   theme = theme(
-                    plot.margin = margin(0, 0, 0, -0.7, unit = "in"),
-                    plot.title = element_text(size = text_title, hjust = 0.06, margin = margin(0.3, 0, 0.5, 0, unit = "in")),
-                    plot.background = element_rect(fill = "#C1D7D7")
+                    text = element_text(color = text_col),
+                    plot.title = element_text(size = text_title, hjust = 0.5, margin = margin(0.3, 0, 0.2, 0, unit = "in")),
+                    plot.subtitle = element_text(size = text_subtitle, hjust = 0.5, margin = margin(0, 0, 0.5, 0, unit = "in")),
+                    plot.background = element_rect(fill = "#D2DCEF")
   ))
-# ggarrange(plot_gender, plot_race, common.legend = FALSE, nrow = 2, align = "h") +
-#   theme(plot.margin = margin(1, 0, 0, -0.5, unit = "in"),
-#         plot.background = element_rect(fill = "gray50"))
 
-#ggsave(filename = "img/test.png", width = 18, height = 20, unit = "in", dpi = 300)
+ggsave(filename = "img/art-diersity.png", width = 16, height = 20, unit = "in", dpi = 300)
 ```
 
